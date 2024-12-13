@@ -14,7 +14,7 @@ class SomeDto implements Arrayable
     /**
      * @return array{foo: string}
      */
-    public function toArray()
+    public function toArray(): array
     {
         return [
             'foo' => 'bar',

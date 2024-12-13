@@ -28,7 +28,7 @@ final class TestUtils
 
     public static function yieldDirectory(string $directory): Iterator
     {
-        /** @var string[] $filePaths */
+        /** @var list<string> $filePaths */
         $filePaths = glob($directory . '/*');
 
         foreach ($filePaths as $filePath) {

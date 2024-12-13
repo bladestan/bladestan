@@ -1,5 +1,3 @@
-includes:
-    - phpstan-baseline.neon
 parameters:
     level: 8
 
@@ -10,3 +8,4 @@ parameters:
     excludePaths:
         - 'tests/*/Fixture/*'
         - 'tests/Rules/data/*'
+        - 'tests/Rules/templates//*'

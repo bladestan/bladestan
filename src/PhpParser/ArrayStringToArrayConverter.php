@@ -6,12 +6,12 @@ namespace TomasVotruba\Bladestan\PhpParser;
 
 use PhpParser\ConstExprEvaluationException;
 use PhpParser\ConstExprEvaluator;
+use PhpParser\Lexer;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Stmt\Expression;
 use PhpParser\Parser;
-use PhpParser\ParserFactory;
+use PhpParser\Parser\Php7;
 use PhpParser\PrettyPrinter\Standard;
 
 /**
@@ -27,8 +27,7 @@ final class ArrayStringToArrayConverter
         private readonly Standard $standard,
         private readonly ConstExprEvaluator $constExprEvaluator
     ) {
-        $parserFactory = new ParserFactory();
-        $this->parser = $parserFactory->create(ParserFactory::ONLY_PHP7);
+        $this->parser = new Php7(new Lexer());
     }
 
     /**
@@ -56,13 +55,10 @@ final class ArrayStringToArrayConverter
         }
 
         $array = $stmts[0]->expr;
-        assert($array instanceof Array_);
 
         $result = [];
 
         foreach ($array->items as $item) {
-            assert($item instanceof ArrayItem);
-
             if (! $item->key instanceof Expr) {
                 continue;
             }

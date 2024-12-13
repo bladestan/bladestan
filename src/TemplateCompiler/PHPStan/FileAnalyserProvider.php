@@ -23,15 +23,17 @@ final class FileAnalyserProvider
 
     public function provide(): FileAnalyser
     {
+        /** @phpstan-ignore phpstanApi.class */
         if ($this->fileAnalyser instanceof FileAnalyser) {
             return $this->fileAnalyser;
         }
 
+        /** @phpstan-ignore phpstanApi.method */
         $container = $this->derivativeContainerFactory->create(
             [__DIR__ . '/../../../config/template-compiler/php-parser.neon']
         );
 
-        /** @var FileAnalyser $fileAnalyser */
+        /** @phpstan-ignore phpstanApi.classConstant */
         $fileAnalyser = $container->getByType(FileAnalyser::class);
         $this->fileAnalyser = $fileAnalyser;
 

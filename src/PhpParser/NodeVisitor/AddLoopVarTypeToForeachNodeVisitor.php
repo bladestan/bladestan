@@ -22,7 +22,7 @@ final class AddLoopVarTypeToForeachNodeVisitor extends NodeVisitorAbstract
      */
     private array $loopStack = [];
 
-    public function enterNode(Node $node): ?Node
+    public function enterNode(Node $node): Node
     {
         if ($node instanceof Foreach_) {
             $this->loopStack[] = true;

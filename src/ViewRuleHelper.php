@@ -7,8 +7,8 @@ namespace TomasVotruba\Bladestan;
 use PhpParser\Node\Expr\CallLike;
 use PHPStan\Analyser\Error;
 use PHPStan\Analyser\Scope;
+use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Registry;
-use PHPStan\Rules\RuleError;
 use TomasVotruba\Bladestan\Compiler\BladeToPHPCompiler;
 use TomasVotruba\Bladestan\ErrorReporting\Blade\TemplateErrorsFactory;
 use TomasVotruba\Bladestan\TemplateCompiler\ErrorFilter;
@@ -34,7 +34,7 @@ final class ViewRuleHelper
     /**
      * @param RenderTemplateWithParameters[] $renderTemplatesWithParameters
      *
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     public function processNode(CallLike $callLike, Scope $scope, array $renderTemplatesWithParameters): array
     {
@@ -70,14 +70,16 @@ final class ViewRuleHelper
     }
 
     /**
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     private function processTemplateFilePath(CompiledTemplate $compiledTemplate): array
     {
         $fileAnalyser = $this->fileAnalyserProvider->provide();
 
+        /** @phpstan-ignore phpstanApi.constructor */
         $collectorsRegistry = new \PHPStan\Collectors\Registry([]);
 
+        /** @phpstan-ignore phpstanApi.method */
         $fileAnalyserResult = $fileAnalyser->analyseFile(
             $compiledTemplate->getPhpFilePath(),
             [],
@@ -86,7 +88,7 @@ final class ViewRuleHelper
             null
         );
 
-        /** @var Error[] $ruleErrors */
+        /** @phpstan-ignore phpstanApi.method */
         $ruleErrors = $fileAnalyserResult->getErrors();
 
         $usefulRuleErrors = $this->errorFilter->filterErrors($ruleErrors);

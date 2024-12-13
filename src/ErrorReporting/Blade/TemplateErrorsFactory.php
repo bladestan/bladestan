@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace TomasVotruba\Bladestan\ErrorReporting\Blade;
 
 use PHPStan\Analyser\Error;
-use PHPStan\Rules\RuleError;
+use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\RuleErrorBuilder;
 use TomasVotruba\Bladestan\ValueObject\PhpFileContentsWithLineMap;
 
@@ -13,7 +13,7 @@ final class TemplateErrorsFactory
 {
     /**
      * @param Error[] $errors
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     public function createErrors(
         array $errors,
@@ -34,7 +34,7 @@ final class TemplateErrorsFactory
                 $fileNameAndTemplateLine = $this->resolveNearestPhpLine($phpToTemplateLines, $phpLineNumberInTemplate);
             }
 
-            $ruleErrors[] = RuleErrorBuilder::message($error->getMessage())
+            $ruleError = RuleErrorBuilder::message($error->getMessage())
                 ->file($phpFilePath)
                 ->line($phpFileLine)
                 ->metadata([
@@ -42,6 +42,8 @@ final class TemplateErrorsFactory
                     'template_line' => current($fileNameAndTemplateLine),
                 ])
                 ->build();
+            assert($ruleError instanceof IdentifierRuleError);
+            $ruleErrors[] = $ruleError;
         }
 
         return $ruleErrors;

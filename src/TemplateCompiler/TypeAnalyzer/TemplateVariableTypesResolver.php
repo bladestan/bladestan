@@ -6,10 +6,8 @@ namespace TomasVotruba\Bladestan\TemplateCompiler\TypeAnalyzer;
 
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PHPStan\Analyser\Scope;
 use PHPStan\Type\ArrayType;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\Generic\GenericObjectType;
 use TomasVotruba\Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 
@@ -23,28 +21,26 @@ final class TemplateVariableTypesResolver
         $variableNamesToTypes = [];
 
         foreach ($array->items as $arrayItem) {
-            if (! $arrayItem instanceof ArrayItem) {
-                continue;
-            }
-
             if (! $arrayItem->key instanceof Expr) {
                 continue;
             }
 
             $arrayItemValue = $scope->getType($arrayItem->key);
-            if (! $arrayItemValue instanceof ConstantStringType) {
+
+            $keyName = $arrayItemValue->getConstantStrings();
+            if ($keyName === []) {
                 continue;
             }
 
-            $keyName = $arrayItemValue->getValue();
             $variableType = $scope->getType($arrayItem->value);
 
             // unwrap generic object type
+            /** @phpstan-ignore phpstanApi.instanceofType */
             if ($variableType instanceof GenericObjectType && isset($variableType->getTypes()[1])) {
                 $variableType = new ArrayType($variableType->getTypes()[0], $variableType->getTypes()[1]);
             }
 
-            $variableNamesToTypes[] = new VariableAndType($keyName, $variableType);
+            $variableNamesToTypes[] = new VariableAndType(reset($keyName)->getValue(), $variableType);
         }
 
         return $variableNamesToTypes;

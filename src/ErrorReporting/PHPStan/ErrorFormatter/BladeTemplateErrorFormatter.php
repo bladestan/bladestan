@@ -19,13 +19,14 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
     public function __construct(
         private RelativePathHelper $relativePathHelper,
     ) {
-        /** @var string $currentWorkingDirectory */
         $currentWorkingDirectory = getcwd();
+        assert($currentWorkingDirectory !== false);
+        /** @phpstan-ignore phpstanApi.constructor */
         $this->simpleRelativePathHelper = new SimpleRelativePathHelper($currentWorkingDirectory);
     }
 
     /**
-     * @return Command::*
+     * @return Command::SUCCESS|Command::FAILURE
      */
     public function formatErrors(AnalysisResult $analysisResult, Output $output): int
     {
@@ -80,6 +81,7 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
                 $templateLine = $errorMetadata['template_line'] ?? null;
 
                 if ($templateFilePath && $templateLine) {
+                    /** @phpstan-ignore phpstanApi.method */
                     $relativeTemplateFileLine = $this->simpleRelativePathHelper->getRelativePath(
                         $templateFilePath
                     ) . ':' . $templateLine;
@@ -88,6 +90,7 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
                 }
             }
 
+            /** @phpstan-ignore phpstanApi.method */
             $relativeFilePath = $this->simpleRelativePathHelper->getRelativePath($file);
             $outputStyle->table(['Line', $relativeFilePath], $rows);
         }

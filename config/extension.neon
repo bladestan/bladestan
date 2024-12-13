@@ -1,6 +1,5 @@
 includes:
     - template-compiler/services.neon
-    - template-compiler/config.neon
 
 parameters:
     bladestan:
@@ -20,6 +19,7 @@ services:
     errorFormatter.blade:
         class: TomasVotruba\Bladestan\ErrorReporting\PHPStan\ErrorFormatter\BladeTemplateErrorFormatter
 
+    - PhpParser\PrettyPrinter\Standard
     - PhpParser\ConstExprEvaluator
     - Illuminate\Filesystem\Filesystem
 

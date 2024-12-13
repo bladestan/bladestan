@@ -6,9 +6,6 @@ namespace TomasVotruba\Bladestan\ValueObject;
 
 final class Loop
 {
-    /**
-     * @var 0|positive-int
-     */
     public int $index;
 
     /**

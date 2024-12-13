@@ -4,9 +4,10 @@ declare(strict_types=1);
 
 namespace TomasVotruba\Bladestan\PhpParser;
 
+use PhpParser\Lexer;
 use PhpParser\Node\Stmt;
 use PhpParser\Parser;
-use PhpParser\ParserFactory;
+use PhpParser\Parser\Php7;
 
 final class SimplePhpParser
 {
@@ -14,8 +15,7 @@ final class SimplePhpParser
 
     public function __construct()
     {
-        $parserFactory = new ParserFactory();
-        $this->nativePhpParser = $parserFactory->create(ParserFactory::ONLY_PHP7);
+        $this->nativePhpParser = new Php7(new Lexer());
     }
 
     /**

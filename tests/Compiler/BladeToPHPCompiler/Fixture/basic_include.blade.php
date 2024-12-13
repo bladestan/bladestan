@@ -3,6 +3,6 @@
 <?php
 
 /** file: foo.blade.php, line: 1 */
-function () use($data) {
+function () use ($data) {
     $data = $data;
 };

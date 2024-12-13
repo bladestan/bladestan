@@ -6,7 +6,7 @@ services:
         arguments!: []
 
     pathRoutingParser:
-        class: 'PHPStan\Parser\PathRoutingParser'
+        class: PHPStan\Parser\PathRoutingParser
         arguments:
             currentPhpVersionRichParser: @rectorParser
             currentPhpVersionSimpleParser: @rectorParser
@@ -14,11 +14,10 @@ services:
         autowired: false
 
     rectorParser:
-        class: 'PHPStan\Parser\RichParser'
+        class: PHPStan\Parser\RichParser
         arguments:
             parser: @currentPhpVersionPhpParser
-            lexer: @currentPhpVersionLexer
-        autowired: false
+        autowired: no
 
     cachedCurrentPhpVersionRichParser:
         class: 'PHPStan\Parser\CachedParser'

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace TomasVotruba\Bladestan\NodeAnalyzer;
 
-use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
@@ -20,10 +19,6 @@ final class CompactFunctionCallParameterResolver
         $funcArgs = $compactFuncCall->getArgs();
 
         foreach ($funcArgs as $funcArg) {
-            if (! $funcArg instanceof Arg) {
-                continue;
-            }
-
             if (! $funcArg->value instanceof String_) {
                 continue;
             }

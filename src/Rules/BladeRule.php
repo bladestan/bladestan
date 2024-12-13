@@ -11,8 +11,8 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
+use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
-use PHPStan\Rules\RuleError;
 use TomasVotruba\Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
 use TomasVotruba\Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
 use TomasVotruba\Bladestan\NodeAnalyzer\MailablesContentMatcher;
@@ -27,6 +27,7 @@ final class BladeRule implements Rule
 {
     /**
      * @param list<Rule> $rules
+     * @phpstan-ignore missingType.generics
      */
     public function __construct(
         array $rules,
@@ -61,7 +62,7 @@ final class BladeRule implements Rule
     }
 
     /**
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     private function processMailablesContent(New_ $new, Scope $scope): array
     {
@@ -71,7 +72,7 @@ final class BladeRule implements Rule
     }
 
     /**
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     private function processLaravelViewFunction(FuncCall|StaticCall $callLike, Scope $scope): array
     {
@@ -81,7 +82,7 @@ final class BladeRule implements Rule
     }
 
     /**
-     * @return RuleError[]
+     * @return list<IdentifierRuleError>
      */
     private function processBladeView(MethodCall $methodCall, Scope $scope): array
     {

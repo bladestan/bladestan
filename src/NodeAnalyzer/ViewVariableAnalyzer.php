@@ -27,6 +27,7 @@ final class ViewVariableAnalyzer
 
         $type = $scope->getType($expr);
 
+        /** @phpstan-ignore phpstanApi.instanceofType */
         if ($type instanceof ObjectType) {
             if (! $type->isInstanceOf(Arrayable::class)->yes()) {
                 return $parametersArray;
@@ -37,6 +38,7 @@ final class ViewVariableAnalyzer
                 ->getReturnType();
         }
 
+        /** @phpstan-ignore phpstanApi.instanceofType */
         if (! $type instanceof ConstantArrayType) {
             return $parametersArray;
         }

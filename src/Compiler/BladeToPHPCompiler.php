@@ -163,8 +163,6 @@ STRING;
         string $fileContents,
         array $variablesAndTypes
     ): PhpFileContentsWithLineMap {
-        Assert::allIsInstanceOf($variablesAndTypes, VariableAndType::class);
-
         $allVariablesList = array_map(
             static fn (VariableAndType $variableAndType): string => $variableAndType->getVariable(),
             $variablesAndTypes
@@ -222,7 +220,7 @@ STRING;
         $return = [];
 
         foreach ($includes[1] as $i => $include) {
-            $arrayString = trim((string) $includes[2][$i], ' ,');
+            $arrayString = trim($includes[2][$i], ' ,');
 
             $array = $this->arrayStringToArrayConverter->convert($arrayString);
 

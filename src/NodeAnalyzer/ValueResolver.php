@@ -26,6 +26,7 @@ final class ValueResolver
 
         $exprType = $scope->getType($expr);
 
+        /** @phpstan-ignore phpstanApi.instanceofType */
         if ($exprType instanceof ConstantScalarType) {
             return $exprType->getValue();
         }

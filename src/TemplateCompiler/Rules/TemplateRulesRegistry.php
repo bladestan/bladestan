@@ -5,14 +5,13 @@ declare(strict_types=1);
 namespace TomasVotruba\Bladestan\TemplateCompiler\Rules;
 
 use PhpParser\Node;
-use PhpParser\Node\Expr\MethodCall;
-use PHPStan\Rules\DirectRegistry;
-use PHPStan\Rules\FunctionCallParametersCheck;
-use PHPStan\Rules\Methods\CallMethodsRule;
+use PHPStan\Rules\Registry;
 use PHPStan\Rules\Rule;
-use TomasVotruba\Bladestan\TemplateCompiler\Reflection\PrivatesAccessor;
 
-final class TemplateRulesRegistry extends DirectRegistry
+/**
+ * @phpstan-ignore phpstanApi.interface
+ */
+final class TemplateRulesRegistry implements Registry
 {
     /**
      * @var string[]
@@ -23,40 +22,56 @@ final class TemplateRulesRegistry extends DirectRegistry
     ];
 
     /**
+     * @var Rule[][]
+     * @phpstan-ignore missingType.generics
+     */
+    private array $rules = [];
+
+    /**
+     * @var Rule[][]
+     * @phpstan-ignore missingType.generics
+     */
+    private array $cache = [];
+
+    /**
      * @param array<Rule<Node>> $rules
      */
     public function __construct(array $rules)
     {
-        $activeRules = $this->filterActiveRules($rules);
-        parent::__construct($activeRules);
+        $rules = $this->filterActiveRules($rules);
+        foreach ($rules as $rule) {
+            $this->rules[$rule->getNodeType()][] = $rule;
+        }
     }
 
     /**
-     * @template TNode as \PhpParser\Node
-     * @param class-string<TNode> $nodeType
-     * @return array<Rule<TNode>>
+     * @template TNodeType of Node
+     * @param class-string<TNodeType> $nodeType
+     * @return array<Rule<TNodeType>>
      */
     public function getRules(string $nodeType): array
     {
-        $activeRules = parent::getRules($nodeType);
+        if (! isset($this->cache[$nodeType])) {
+            /** @phpstan-ignore phpstanApi.runtimeReflection */
+            $parentNodeTypes = [$nodeType] + class_parents($nodeType);
 
-        // only fix in a weird test case setup
-        if (defined('PHPUNIT_COMPOSER_INSTALL') && $nodeType === MethodCall::class) {
-            $privatesAccessor = new PrivatesAccessor();
+            /** @phpstan-ignore phpstanApi.runtimeReflection */
+            $parentNodeTypes += class_implements($nodeType);
 
-            foreach ($activeRules as $activeRule) {
-                if (! $activeRule instanceof CallMethodsRule) {
-                    continue;
+            $rules = [];
+            foreach ($parentNodeTypes as $parentNodeType) {
+                foreach ($this->rules[$parentNodeType] ?? [] as $rule) {
+                    $rules[] = $rule;
                 }
-
-                /** @var FunctionCallParametersCheck $check */
-                $check = $privatesAccessor->getPrivateProperty($activeRule, 'parametersCheck');
-
-                $privatesAccessor->setPrivateProperty($check, 'checkArgumentTypes', true);
             }
+
+            $this->cache[$nodeType] = $rules;
         }
 
-        return $activeRules;
+        /** @var array<Rule<TNodeType>> $selectedRules */
+        $selectedRules = $this->cache[$nodeType];
+
+        return $selectedRules;
     }
 
     /**

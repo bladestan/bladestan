@@ -17,7 +17,7 @@ use TomasVotruba\Bladestan\Rules\BladeRule;
 final class BladeRuleTest extends RuleTestCase
 {
     /**
-     * @param mixed[] $expectedErrorsWithLines
+     * @param list<array{0: string, 1: int, 2?: string|null}> $expectedErrorsWithLines
      */
     #[DataProvider('provideData')]
     public function testRule(string $analysedFile, array $expectedErrorsWithLines): void
@@ -28,16 +28,20 @@ final class BladeRuleTest extends RuleTestCase
     public static function provideData(): Iterator
     {
         yield [__DIR__ . '/Fixture/view-factory.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 13],
             ['Binary operation "+" between string and 10 results in an error.', 13],
             ['Binary operation "+" between string and \'bar\' results in an error.', 13],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 16],
             ['Binary operation "+" between string and 10 results in an error.', 16],
             ['Binary operation "+" between string and \'bar\' results in an error.', 16],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 19],
             ['Binary operation "+" between string and 10 results in an error.', 19],
             ['Binary operation "+" between string and \'bar\' results in an error.', 19],
         ]];
 
         // @todo instead of one huge file with 20 errors, there should be similar errors together, just 2-3 errors per file to make easier debugging and extending
         yield [__DIR__ . '/Fixture/laravel-view-function.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
             ['Binary operation "+" between string and 10 results in an error.', 9],
             ['Binary operation "+" between string and \'bar\' results in an error.', 9],
             ['Binary operation "+" between string and 10 results in an error.', 13],
@@ -60,15 +64,19 @@ final class BladeRuleTest extends RuleTestCase
             ['If condition is always true.', 35],
             ['Binary operation "+" between string and \'bar\' results in an error.', 35],
             ['Variable $foos might not be defined.', 43],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 49],
             ['Binary operation "+" between string and 10 results in an error.', 49],
             ['Binary operation "+" between string and \'bar\' results in an error.', 49],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 51],
             ['Binary operation "+" between string and 10 results in an error.', 51],
             ['Binary operation "+" between string and \'bar\' results in an error.', 51],
         ]];
 
         yield [__DIR__ . '/Fixture/arrayable.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 10],
             ['Binary operation "+" between string and 10 results in an error.', 10],
             ['Binary operation "+" between string and \'bar\' results in an error.', 10],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 13],
             ['Binary operation "+" between string and 10 results in an error.', 13],
             ['Binary operation "+" between string and \'bar\' results in an error.', 13],
         ]];
@@ -78,8 +86,10 @@ final class BladeRuleTest extends RuleTestCase
         yield [__DIR__ . '/Fixture/skip-form-errors.php', []];
 
         yield [__DIR__ . '/Fixture/laravel-response-function.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
             ['Binary operation "+" between string and 10 results in an error.', 9],
             ['Binary operation "+" between string and \'bar\' results in an error.', 9],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 13],
             ['Variable $foo might not be defined.', 13],
             ['Undefined variable: $foo', 13],
         ]];
@@ -93,13 +103,16 @@ final class BladeRuleTest extends RuleTestCase
         ]];
 
         yield [__DIR__ . '/Fixture/laravel-mailable-method.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 17],
             ['Binary operation "+" between string and 10 results in an error.', 17],
             ['Binary operation "+" between string and \'bar\' results in an error.', 17],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 24],
             ['Binary operation "+" between string and 10 results in an error.', 24],
             ['Binary operation "+" between string and \'bar\' results in an error.', 24],
         ]];
 
         yield [__DIR__ . '/Fixture/laravel-mail_message-method.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 16],
             ['Binary operation "+" between string and 10 results in an error.', 16],
             ['Binary operation "+" between string and \'bar\' results in an error.', 16],
         ]];

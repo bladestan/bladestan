@@ -90,6 +90,7 @@ final class BladeViewMethodsMatcher
             $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
         }
 
+        /** @phpstan-ignore phpstanApi.instanceofType */
         if ($calledOnType instanceof ObjectType && $calledOnType->isInstanceOf(Component::class)->yes()) {
             $type = new New_(new FullyQualified(HtmlString::class));
             $parametersArray->items[] = new ArrayItem($type, new String_('slot'));
@@ -121,6 +122,7 @@ final class BladeViewMethodsMatcher
             return true;
         }
 
+        /** @phpstan-ignore phpstanApi.instanceofType */
         if (! $objectType instanceof ObjectType) {
             return false;
         }
