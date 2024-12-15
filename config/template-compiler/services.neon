@@ -1,12 +1,12 @@
 services:
-    - TomasVotruba\Bladestan\TemplateCompiler\PHPStan\FileAnalyserProvider
-    - TomasVotruba\Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory
-    - TomasVotruba\Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver
-    - TomasVotruba\Bladestan\TemplateCompiler\ErrorFilter
-    - TomasVotruba\Bladestan\PhpParser\SimplePhpParser
-    - TomasVotruba\Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
+    - Bladestan\TemplateCompiler\PHPStan\FileAnalyserProvider
+    - Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory
+    - Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver
+    - Bladestan\TemplateCompiler\ErrorFilter
+    - Bladestan\PhpParser\SimplePhpParser
+    - Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
 
     -
-        factory: TomasVotruba\Bladestan\Configuration\Configuration
+        factory: Bladestan\Configuration\Configuration
         arguments:
             - %bladestan%

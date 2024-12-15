@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Exception;
+namespace Bladestan\Exception;
 
 use Exception;
 

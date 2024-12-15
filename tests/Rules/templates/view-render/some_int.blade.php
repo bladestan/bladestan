@@ -5,6 +5,6 @@
 
 
 @php
-    /** @var \TomasVotruba\Bladestan\Tests\Rules\Source\SomeObject $someObject */
+    /** @var \Bladestan\Tests\Rules\Source\SomeObject $someObject */
 @endphp
 <!-- {{ $someObject->getId() }} -->

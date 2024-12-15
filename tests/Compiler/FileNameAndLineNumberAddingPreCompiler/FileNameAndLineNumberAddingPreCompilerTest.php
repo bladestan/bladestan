@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests\Compiler\FileNameAndLineNumberAddingPreCompiler;
+namespace Bladestan\Tests\Compiler\FileNameAndLineNumberAddingPreCompiler;
 
+use Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
+use Bladestan\Configuration\Configuration;
+use Bladestan\Tests\TestUtils;
 use Iterator;
 use PHPStan\Testing\PHPStanTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use TomasVotruba\Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
-use TomasVotruba\Bladestan\Configuration\Configuration;
-use TomasVotruba\Bladestan\Tests\TestUtils;
 
 final class FileNameAndLineNumberAddingPreCompilerTest extends PHPStanTestCase
 {

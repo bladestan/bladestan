@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Support;
+namespace Bladestan\Support;
 
 use PHPStan\File\FileHelper;
 

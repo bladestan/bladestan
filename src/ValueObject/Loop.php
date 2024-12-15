@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\ValueObject;
+namespace Bladestan\ValueObject;
 
 final class Loop
 {

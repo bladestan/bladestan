@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\ValueObject;
+namespace Bladestan\ValueObject;
 
-/** @see \TomasVotruba\Bladestan\TemplateCompiler\ValueObject\PhpFileContentsWithLineMap */
+/** @see \Bladestan\TemplateCompiler\ValueObject\PhpFileContentsWithLineMap */
 final class PhpFileContentsWithLineMap
 {
     /**

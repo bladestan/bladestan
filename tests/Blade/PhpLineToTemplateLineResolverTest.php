@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests\Blade;
+namespace Bladestan\Tests\Blade;
 
+use Bladestan\Blade\PhpLineToTemplateLineResolver;
 use Iterator;
 use PHPStan\Testing\PHPStanTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use TomasVotruba\Bladestan\Blade\PhpLineToTemplateLineResolver;
 
 final class PhpLineToTemplateLineResolverTest extends PHPStanTestCase
 {

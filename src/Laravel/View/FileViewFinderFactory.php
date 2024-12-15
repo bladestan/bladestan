@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Laravel\View;
+namespace Bladestan\Laravel\View;
 
+use Bladestan\Configuration\Configuration;
+use Bladestan\Support\DirectoryHelper;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\View\FileViewFinder;
-use TomasVotruba\Bladestan\Configuration\Configuration;
-use TomasVotruba\Bladestan\Support\DirectoryHelper;
 
 /**
  * @api factory service in config

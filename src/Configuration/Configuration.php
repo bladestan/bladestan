@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Configuration;
+namespace Bladestan\Configuration;
 
 use Webmozart\Assert\Assert;
 

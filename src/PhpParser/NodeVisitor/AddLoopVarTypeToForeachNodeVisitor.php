@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\PhpParser\NodeVisitor;
+namespace Bladestan\PhpParser\NodeVisitor;
 
+use Bladestan\ValueObject\Loop;
 use PhpParser\Node;
 use PhpParser\Node\Expr\Assign;
 use PhpParser\Node\Expr\New_;
@@ -13,7 +14,6 @@ use PhpParser\Node\Stmt\Expression;
 use PhpParser\Node\Stmt\Foreach_;
 use PhpParser\Node\Stmt\Unset_;
 use PhpParser\NodeVisitorAbstract;
-use TomasVotruba\Bladestan\ValueObject\Loop;
 
 final class AddLoopVarTypeToForeachNodeVisitor extends NodeVisitorAbstract
 {

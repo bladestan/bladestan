@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\TemplateCompiler\ValueObject;
+namespace Bladestan\TemplateCompiler\ValueObject;
 
 use PhpParser\Node\Expr\Array_;
 

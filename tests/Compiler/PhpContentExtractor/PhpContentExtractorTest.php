@@ -2,15 +2,15 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests\Compiler\PhpContentExtractor;
+namespace Bladestan\Tests\Compiler\PhpContentExtractor;
 
+use Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
+use Bladestan\Compiler\PhpContentExtractor;
+use Bladestan\Tests\TestUtils;
 use Illuminate\View\Compilers\BladeCompiler;
 use Iterator;
 use PHPStan\Testing\PHPStanTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use TomasVotruba\Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
-use TomasVotruba\Bladestan\Compiler\PhpContentExtractor;
-use TomasVotruba\Bladestan\Tests\TestUtils;
 
 final class PhpContentExtractorTest extends PHPStanTestCase
 {

@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\PhpParser\NodeVisitor;
+namespace Bladestan\PhpParser\NodeVisitor;
 
+use Bladestan\Exception\ShouldNotHappenException;
 use Nette\Utils\Json;
 use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
@@ -14,7 +15,6 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitorAbstract;
-use TomasVotruba\Bladestan\Exception\ShouldNotHappenException;
 use Webmozart\Assert\Assert;
 
 /**

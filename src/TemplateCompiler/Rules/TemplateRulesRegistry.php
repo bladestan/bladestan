@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\TemplateCompiler\Rules;
+namespace Bladestan\TemplateCompiler\Rules;
 
 use PhpParser\Node;
 use PHPStan\Rules\Registry;

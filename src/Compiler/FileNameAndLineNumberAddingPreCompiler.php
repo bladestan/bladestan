@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Compiler;
+namespace Bladestan\Compiler;
 
+use Bladestan\Configuration\Configuration;
 use Illuminate\Support\Str;
-use TomasVotruba\Bladestan\Configuration\Configuration;
 
 final class FileNameAndLineNumberAddingPreCompiler
 {

@@ -23,12 +23,12 @@
     },
     "autoload": {
         "psr-4": {
-            "TomasVotruba\\Bladestan\\": "src"
+            "Bladestan\\": "src"
         }
     },
     "autoload-dev": {
         "psr-4": {
-            "TomasVotruba\\Bladestan\\Tests\\": "tests"
+            "Bladestan\\Tests\\": "tests"
         }
     },
     "extra": {

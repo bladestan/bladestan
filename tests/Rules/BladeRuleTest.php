@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests\Rules;
+namespace Bladestan\Tests\Rules;
 
+use Bladestan\Rules\BladeRule;
 use Iterator;
 use PhpParser\Node;
 use PHPStan\Rules\Rule;
 use PHPStan\Testing\RuleTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use TomasVotruba\Bladestan\Rules\BladeRule;
 
 /**
  * @extends RuleTestCase<Rule>

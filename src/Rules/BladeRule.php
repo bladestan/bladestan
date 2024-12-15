@@ -2,8 +2,13 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Rules;
+namespace Bladestan\Rules;
 
+use Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
+use Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
+use Bladestan\NodeAnalyzer\MailablesContentMatcher;
+use Bladestan\TemplateCompiler\Rules\TemplateRulesRegistry;
+use Bladestan\ViewRuleHelper;
 use PhpParser\Node;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\FuncCall;
@@ -13,15 +18,10 @@ use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
-use TomasVotruba\Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
-use TomasVotruba\Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
-use TomasVotruba\Bladestan\NodeAnalyzer\MailablesContentMatcher;
-use TomasVotruba\Bladestan\TemplateCompiler\Rules\TemplateRulesRegistry;
-use TomasVotruba\Bladestan\ViewRuleHelper;
 
 /**
  * @implements Rule<Node>
- * @see \TomasVotruba\Bladestan\Tests\Rules\BladeRuleTest
+ * @see \Bladestan\Tests\Rules\BladeRuleTest
  */
 final class BladeRule implements Rule
 {

@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\ErrorReporting\Blade;
+namespace Bladestan\ErrorReporting\Blade;
 
+use Bladestan\ValueObject\PhpFileContentsWithLineMap;
 use PHPStan\Analyser\Error;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\RuleErrorBuilder;
-use TomasVotruba\Bladestan\ValueObject\PhpFileContentsWithLineMap;
 
 final class TemplateErrorsFactory
 {

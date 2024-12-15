@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Blade;
+namespace Bladestan\Blade;
 
+use Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor;
+use Bladestan\PhpParser\SimplePhpParser;
 use PhpParser\NodeTraverser;
-use TomasVotruba\Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor;
-use TomasVotruba\Bladestan\PhpParser\SimplePhpParser;
 
 final class PhpLineToTemplateLineResolver
 {

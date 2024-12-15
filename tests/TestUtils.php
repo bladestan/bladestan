@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests;
+namespace Bladestan\Tests;
 
 use Iterator;
 use Webmozart\Assert\Assert;

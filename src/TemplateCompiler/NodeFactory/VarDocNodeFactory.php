@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\TemplateCompiler\NodeFactory;
+namespace Bladestan\TemplateCompiler\NodeFactory;
 
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use PhpParser\Comment\Doc;
 use PhpParser\Node\Stmt\Nop;
-use TomasVotruba\Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 
 final class VarDocNodeFactory
 {

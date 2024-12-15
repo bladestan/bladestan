@@ -1,6 +1,6 @@
 <?php
 
-namespace TomasVotruba\Bladestan\Compiler;
+namespace Bladestan\Compiler;
 
 use Exception;
 use Illuminate\Support\Arr;

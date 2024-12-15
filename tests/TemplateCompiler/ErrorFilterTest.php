@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests\TemplateCompiler;
+namespace Bladestan\Tests\TemplateCompiler;
 
+use Bladestan\TemplateCompiler\ErrorFilter;
 use PHPStan\Analyser\Error;
 use PHPUnit\Framework\TestCase;
-use TomasVotruba\Bladestan\TemplateCompiler\ErrorFilter;
 
 final class ErrorFilterTest extends TestCase
 {

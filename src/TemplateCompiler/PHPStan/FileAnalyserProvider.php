@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\TemplateCompiler\PHPStan;
+namespace Bladestan\TemplateCompiler\PHPStan;
 
 use PHPStan\Analyser\FileAnalyser;
 use PHPStan\DependencyInjection\DerivativeContainerFactory;

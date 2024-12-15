@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests\Compiler\BladeToPHPCompiler;
+namespace Bladestan\Tests\Compiler\BladeToPHPCompiler;
 
+use Bladestan\Compiler\BladeToPHPCompiler;
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
+use Bladestan\Tests\TestUtils;
 use Iterator;
 use PHPStan\Testing\PHPStanTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
-use TomasVotruba\Bladestan\Compiler\BladeToPHPCompiler;
-use TomasVotruba\Bladestan\TemplateCompiler\ValueObject\VariableAndType;
-use TomasVotruba\Bladestan\Tests\TestUtils;
 
 final class BladeToPHPCompilerTest extends PHPStanTestCase
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\PhpParser;
+namespace Bladestan\PhpParser;
 
 use PhpParser\Lexer;
 use PhpParser\Node\Stmt;

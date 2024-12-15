@@ -2,8 +2,17 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Compiler;
+namespace Bladestan\Compiler;
 
+use Bladestan\Blade\PhpLineToTemplateLineResolver;
+use Bladestan\PhpParser\ArrayStringToArrayConverter;
+use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
+use Bladestan\PhpParser\NodeVisitor\RemoveEnvVariableNodeVisitor;
+use Bladestan\PhpParser\SimplePhpParser;
+use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
+use Bladestan\ValueObject\IncludedViewAndVariables;
+use Bladestan\ValueObject\PhpFileContentsWithLineMap;
 use Illuminate\Contracts\View\Factory;
 use Illuminate\Events\Dispatcher;
 use Illuminate\Events\NullDispatcher;
@@ -18,16 +27,6 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
 use Throwable;
-use TomasVotruba\Bladestan\Blade\PhpLineToTemplateLineResolver;
-use TomasVotruba\Bladestan\PhpParser\ArrayStringToArrayConverter;
-use TomasVotruba\Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
-use TomasVotruba\Bladestan\PhpParser\NodeVisitor\RemoveEnvVariableNodeVisitor;
-use TomasVotruba\Bladestan\PhpParser\SimplePhpParser;
-use TomasVotruba\Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
-use TomasVotruba\Bladestan\TemplateCompiler\ValueObject\VariableAndType;
-use TomasVotruba\Bladestan\ValueObject\IncludedViewAndVariables;
-use TomasVotruba\Bladestan\ValueObject\PhpFileContentsWithLineMap;
-use Webmozart\Assert\Assert;
 
 final class BladeToPHPCompiler
 {

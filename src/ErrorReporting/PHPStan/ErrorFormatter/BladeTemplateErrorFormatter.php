@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\ErrorReporting\PHPStan\ErrorFormatter;
+namespace Bladestan\ErrorReporting\PHPStan\ErrorFormatter;
 
 use PHPStan\Analyser\Error;
 use PHPStan\Command\AnalysisResult;

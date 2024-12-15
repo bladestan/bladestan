@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\TemplateCompiler;
+namespace Bladestan\TemplateCompiler;
 
 use PHPStan\Analyser\Error;
 
 /**
- * @see \TomasVotruba\Bladestan\Tests\TemplateCompiler\ErrorFilterTest
+ * @see \Bladestan\Tests\TemplateCompiler\ErrorFilterTest
  */
 final class ErrorFilter
 {

@@ -2,8 +2,9 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\NodeAnalyzer;
+namespace Bladestan\NodeAnalyzer;
 
+use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Illuminate\Contracts\Support\Arrayable;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
@@ -14,7 +15,6 @@ use PHPStan\Analyser\Scope;
 use PHPStan\Type\Constant\ConstantArrayType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\VerbosityLevel;
-use TomasVotruba\Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 
 final class ViewVariableAnalyzer
 {

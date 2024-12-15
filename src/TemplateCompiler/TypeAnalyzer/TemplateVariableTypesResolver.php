@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\TemplateCompiler\TypeAnalyzer;
+namespace Bladestan\TemplateCompiler\TypeAnalyzer;
 
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PHPStan\Analyser\Scope;
 use PHPStan\Type\ArrayType;
 use PHPStan\Type\Generic\GenericObjectType;
-use TomasVotruba\Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 
 final class TemplateVariableTypesResolver
 {

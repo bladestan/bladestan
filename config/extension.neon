@@ -13,46 +13,46 @@ parametersSchema:
     ])
 
 rules:
-    - TomasVotruba\Bladestan\Rules\BladeRule
+    - Bladestan\Rules\BladeRule
 
 services:
     errorFormatter.blade:
-        class: TomasVotruba\Bladestan\ErrorReporting\PHPStan\ErrorFormatter\BladeTemplateErrorFormatter
+        class: Bladestan\ErrorReporting\PHPStan\ErrorFormatter\BladeTemplateErrorFormatter
 
     - PhpParser\PrettyPrinter\Standard
     - PhpParser\ConstExprEvaluator
     - Illuminate\Filesystem\Filesystem
 
-    - TomasVotruba\Bladestan\Laravel\View\BladeCompilerFactory
+    - Bladestan\Laravel\View\BladeCompilerFactory
     -
         class: Illuminate\View\Compilers\BladeCompiler
-        factory: ['@TomasVotruba\Bladestan\Laravel\View\BladeCompilerFactory', 'create']
+        factory: ['@Bladestan\Laravel\View\BladeCompilerFactory', 'create']
 
-    - TomasVotruba\Bladestan\Laravel\View\FileViewFinderFactory
+    - Bladestan\Laravel\View\FileViewFinderFactory
     -
         class: Illuminate\View\FileViewFinder
-        factory: ['@TomasVotruba\Bladestan\Laravel\View\FileViewFinderFactory', 'create']
+        factory: ['@Bladestan\Laravel\View\FileViewFinderFactory', 'create']
 
-    - TomasVotruba\Bladestan\ViewRuleHelper
-    - TomasVotruba\Bladestan\Blade\PhpLineToTemplateLineResolver
-    - TomasVotruba\Bladestan\ErrorReporting\Blade\TemplateErrorsFactory
-    - TomasVotruba\Bladestan\NodeAnalyzer\TemplateFilePathResolver
-    - TomasVotruba\Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher
-    - TomasVotruba\Bladestan\NodeAnalyzer\MailablesContentMatcher
-    - TomasVotruba\Bladestan\NodeAnalyzer\BladeViewMethodsMatcher
-    - TomasVotruba\Bladestan\NodeAnalyzer\ViewDataParametersAnalyzer
-    - TomasVotruba\Bladestan\NodeAnalyzer\ViewVariableAnalyzer
-    - TomasVotruba\Bladestan\NodeAnalyzer\CompactFunctionCallParameterResolver
-    - TomasVotruba\Bladestan\NodeAnalyzer\MagicViewWithCallParameterResolver
-    - TomasVotruba\Bladestan\NodeAnalyzer\ValueResolver
+    - Bladestan\ViewRuleHelper
+    - Bladestan\Blade\PhpLineToTemplateLineResolver
+    - Bladestan\ErrorReporting\Blade\TemplateErrorsFactory
+    - Bladestan\NodeAnalyzer\TemplateFilePathResolver
+    - Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher
+    - Bladestan\NodeAnalyzer\MailablesContentMatcher
+    - Bladestan\NodeAnalyzer\BladeViewMethodsMatcher
+    - Bladestan\NodeAnalyzer\ViewDataParametersAnalyzer
+    - Bladestan\NodeAnalyzer\ViewVariableAnalyzer
+    - Bladestan\NodeAnalyzer\CompactFunctionCallParameterResolver
+    - Bladestan\NodeAnalyzer\MagicViewWithCallParameterResolver
+    - Bladestan\NodeAnalyzer\ValueResolver
 
-    - TomasVotruba\Bladestan\Compiler\BladeToPHPCompiler
-    - TomasVotruba\Bladestan\Compiler\PhpContentExtractor
-    - TomasVotruba\Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
-    - TomasVotruba\Bladestan\PhpParser\ArrayStringToArrayConverter
-    - TomasVotruba\Bladestan\Support\DirectoryHelper
+    - Bladestan\Compiler\BladeToPHPCompiler
+    - Bladestan\Compiler\PhpContentExtractor
+    - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
+    - Bladestan\PhpParser\ArrayStringToArrayConverter
+    - Bladestan\Support\DirectoryHelper
 
     -
-        class: TomasVotruba\Bladestan\PhpParser\NodeVisitor\ViewFunctionArgumentsNodeVisitor
+        class: Bladestan\PhpParser\NodeVisitor\ViewFunctionArgumentsNodeVisitor
         tags:
             - phpstan.parser.richParserNodeVisitor

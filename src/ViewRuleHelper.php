@@ -2,21 +2,20 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan;
+namespace Bladestan;
 
+use Bladestan\Compiler\BladeToPHPCompiler;
+use Bladestan\ErrorReporting\Blade\TemplateErrorsFactory;
+use Bladestan\TemplateCompiler\ErrorFilter;
+use Bladestan\TemplateCompiler\PHPStan\FileAnalyserProvider;
+use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
+use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
+use Bladestan\ValueObject\CompiledTemplate;
 use PhpParser\Node\Expr\CallLike;
-use PHPStan\Analyser\Error;
 use PHPStan\Analyser\Scope;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Registry;
-use TomasVotruba\Bladestan\Compiler\BladeToPHPCompiler;
-use TomasVotruba\Bladestan\ErrorReporting\Blade\TemplateErrorsFactory;
-use TomasVotruba\Bladestan\TemplateCompiler\ErrorFilter;
-use TomasVotruba\Bladestan\TemplateCompiler\PHPStan\FileAnalyserProvider;
-use TomasVotruba\Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
-use TomasVotruba\Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
-use TomasVotruba\Bladestan\TemplateCompiler\ValueObject\VariableAndType;
-use TomasVotruba\Bladestan\ValueObject\CompiledTemplate;
 
 final class ViewRuleHelper
 {

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TomasVotruba\Bladestan\Tests\Rules\Source;
+namespace Bladestan\Tests\Rules\Source;
 
 final class SomeObject
 {
