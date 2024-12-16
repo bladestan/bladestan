@@ -26,11 +26,15 @@ final class FileViewFinderFactory
         // @note is the absolute path needed?
         $absoluteTemplatePaths = $this->directoryHelper->absolutizePaths($this->configuration->getTemplatePaths());
 
-        return new FileViewFinder(
+        $finder = new FileViewFinder(
             $this->filesystem,
             $absoluteTemplatePaths,
             // @note why SVG?
             ['blade.php', 'svg']
         );
+        foreach ($this->configuration->getNamespacedPaths() as $namespace => $path) {
+            $finder->addNamespace($namespace, $path);
+        }
+        return $finder;
     }
 }

@@ -13,6 +13,8 @@ final class Configuration
      */
     public const TEMPLATE_PATHS = 'template_paths';
 
+    public const NAMESPACED_PATHS = 'namespaced_paths';
+
     /**
      * @param array<string, mixed> $parameters
      */
@@ -24,6 +26,10 @@ final class Configuration
         $templatePaths = $this->parameters[self::TEMPLATE_PATHS];
         Assert::isArray($templatePaths);
         Assert::allString($templatePaths);
+
+        $namespacedPaths = $this->parameters[self::NAMESPACED_PATHS] ?? [];
+        Assert::isArray($namespacedPaths);
+        Assert::allString($namespacedPaths);
     }
 
     /**
@@ -32,5 +38,13 @@ final class Configuration
     public function getTemplatePaths(): array
     {
         return $this->parameters[self::TEMPLATE_PATHS];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function getNamespacedPaths(): array
+    {
+        return $this->parameters[self::NAMESPACED_PATHS] ?? [];
     }
 }
