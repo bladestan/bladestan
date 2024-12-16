@@ -7,6 +7,7 @@ namespace Bladestan\NodeAnalyzer;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Contracts\View\Factory as ViewFactoryContract;
+use Illuminate\Http\Response;
 use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\HtmlString;
@@ -23,8 +24,8 @@ use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
 use PHPStan\Type\ObjectType;
-use PHPStan\Type\ThisType;
 use PHPStan\Type\Type;
+use PHPStan\Type\UnionType;
 
 final class BladeViewMethodsMatcher
 {
@@ -61,11 +62,6 @@ final class BladeViewMethodsMatcher
 
         $calledOnType = $scope->getType($methodCall->var);
 
-        // narrow response
-        if ($calledOnType instanceof ThisType) {
-            $calledOnType = $calledOnType->getStaticObjectType();
-        }
-
         if (! $this->isCalledOnTypeABladeView($calledOnType, $methodName)) {
             return [];
         }
@@ -90,8 +86,7 @@ final class BladeViewMethodsMatcher
             $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
         }
 
-        /** @phpstan-ignore phpstanApi.instanceofType */
-        if ($calledOnType instanceof ObjectType && $calledOnType->isInstanceOf(Component::class)->yes()) {
+        if ((new ObjectType(Component::class))->isSuperTypeOf($calledOnType)->yes()) {
             $type = new New_(new FullyQualified(HtmlString::class));
             $parametersArray->items[] = new ArrayItem($type, new String_('slot'));
             $type = new New_(new FullyQualified(ComponentAttributeBag::class));
@@ -118,33 +113,22 @@ final class BladeViewMethodsMatcher
 
     private function isClassWithViewMethod(Type $objectType): bool
     {
-        if ($objectType->isSuperTypeOf(new ObjectType(ResponseFactory::class))->yes()) {
-            return true;
-        }
-
-        /** @phpstan-ignore phpstanApi.instanceofType */
-        if (! $objectType instanceof ObjectType) {
-            return false;
-        }
-
-        if ($objectType->isInstanceOf(Component::class)->yes()) {
-            return true;
-        }
-
-        if ($objectType->isInstanceOf(Mailable::class)->yes()) {
-            return true;
-        }
-
-        return $objectType->isInstanceOf(MailMessage::class)->yes();
+        return (new UnionType([
+            new ObjectType(ResponseFactory::class),
+            new ObjectType(Response::class),
+            new ObjectType(Component::class),
+            new ObjectType(Mailable::class),
+            new ObjectType(MailMessage::class),
+        ]))->isSuperTypeOf($objectType)->yes();
     }
 
     private function isCalledOnTypeABladeView(Type $objectType, string $methodName): bool
     {
-        if ($objectType->isSuperTypeOf(new ObjectType(Factory::class))->yes()) {
+        if ((new ObjectType(Factory::class))->isSuperTypeOf($objectType)->yes()) {
             return in_array($methodName, self::VIEW_FACTORY_METHOD_NAMES, true);
         }
 
-        if ($objectType->isSuperTypeOf(new ObjectType(ViewFactoryContract::class))->yes()) {
+        if ((new ObjectType(ViewFactoryContract::class))->isSuperTypeOf($objectType)->yes()) {
             return $methodName === self::MAKE;
         }
 

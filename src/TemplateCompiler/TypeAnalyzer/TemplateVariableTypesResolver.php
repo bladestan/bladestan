@@ -8,8 +8,6 @@ use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PHPStan\Analyser\Scope;
-use PHPStan\Type\ArrayType;
-use PHPStan\Type\Generic\GenericObjectType;
 
 final class TemplateVariableTypesResolver
 {
@@ -33,13 +31,6 @@ final class TemplateVariableTypesResolver
             }
 
             $variableType = $scope->getType($arrayItem->value);
-
-            // unwrap generic object type
-            /** @phpstan-ignore phpstanApi.instanceofType */
-            if ($variableType instanceof GenericObjectType && isset($variableType->getTypes()[1])) {
-                $variableType = new ArrayType($variableType->getTypes()[0], $variableType->getTypes()[1]);
-            }
-
             $variableNamesToTypes[] = new VariableAndType(reset($keyName)->getValue(), $variableType);
         }
 

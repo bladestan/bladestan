@@ -12,7 +12,7 @@ use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
-use PHPStan\Type\Constant\ConstantArrayType;
+use PHPStan\Reflection\ParametersAcceptorSelector;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\VerbosityLevel;
 
@@ -27,27 +27,25 @@ final class ViewVariableAnalyzer
 
         $type = $scope->getType($expr);
 
-        /** @phpstan-ignore phpstanApi.instanceofType */
-        if ($type instanceof ObjectType) {
-            if (! $type->isInstanceOf(Arrayable::class)->yes()) {
-                return $parametersArray;
-            }
-
-            $type = $type->getMethod('toArray', $scope)
-                ->getVariants()[0]
-                ->getReturnType();
+        $arrayable = new ObjectType(Arrayable::class);
+        if (! $arrayable->isSuperTypeOf($type)->yes()) {
+            return $parametersArray;
         }
 
-        /** @phpstan-ignore phpstanApi.instanceofType */
-        if (! $type instanceof ConstantArrayType) {
+        $toArrayMethod = $type->getMethod('toArray', $scope);
+        $type = ParametersAcceptorSelector::selectFromArgs($scope, [], $toArrayMethod->getVariants())->getReturnType();
+
+        $constantArrays = $type->getConstantArrays();
+
+        if (count($constantArrays) !== 1) {
             return $parametersArray;
         }
 
         $keyTypes = array_map(function ($keyType): string {
             return (string) $keyType->getValue();
-        }, $type->getKeyTypes());
+        }, $constantArrays[0]->getKeyTypes());
 
-        foreach (array_combine($keyTypes, $type->getValueTypes()) as $key => $value) {
+        foreach (array_combine($keyTypes, $constantArrays[0]->getValueTypes()) as $key => $value) {
             VarDocNodeFactory::setDocBlock($key, $value->describe(VerbosityLevel::typeOnly()));
             $parametersArray->items[] = new ArrayItem(new Variable($key), new String_($key));
         }
