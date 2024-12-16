@@ -119,7 +119,8 @@ final class BladeViewMethodsMatcher
             new ObjectType(Component::class),
             new ObjectType(Mailable::class),
             new ObjectType(MailMessage::class),
-        ]))->isSuperTypeOf($objectType)->yes();
+        ]))->isSuperTypeOf($objectType)
+            ->yes();
     }
 
     private function isCalledOnTypeABladeView(Type $objectType, string $methodName): bool
