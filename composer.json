@@ -29,7 +29,8 @@
     "autoload-dev": {
         "psr-4": {
             "Bladestan\\Tests\\": "tests"
-        }
+        },
+        "classmap": ["tests/Rules/Fixture"]
     },
     "extra": {
         "phpstan": {
