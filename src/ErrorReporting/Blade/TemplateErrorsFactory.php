@@ -34,6 +34,8 @@ final class TemplateErrorsFactory
                 $fileNameAndTemplateLine = $this->resolveNearestPhpLine($phpToTemplateLines, $phpLineNumberInTemplate);
             }
 
+            assert($error->getIdentifier() !== null);
+
             $ruleError = RuleErrorBuilder::message($error->getMessage())
                 ->file($phpFilePath)
                 ->line($phpFileLine)
@@ -41,8 +43,8 @@ final class TemplateErrorsFactory
                     'template_file_path' => array_key_first($fileNameAndTemplateLine),
                     'template_line' => current($fileNameAndTemplateLine),
                 ])
+                ->identifier($error->getIdentifier())
                 ->build();
-            assert($ruleError instanceof IdentifierRuleError);
             $ruleErrors[] = $ruleError;
         }
 
