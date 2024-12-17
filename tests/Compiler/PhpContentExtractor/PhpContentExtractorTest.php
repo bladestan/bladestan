@@ -32,7 +32,7 @@ final class PhpContentExtractorTest extends PHPStanTestCase
     }
 
     #[DataProvider('fixtureProvider')]
-    public function testExtactPhpContentsFromBladeTemlate(string $filePath): void
+    public function testExtractPhpContentsFromBladeTemplate(string $filePath): void
     {
         [$inputBladeContents, $expectedPhpContents] = TestUtils::splitFixture($filePath);
 

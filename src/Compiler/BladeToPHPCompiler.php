@@ -74,7 +74,7 @@ STRING;
         private readonly array $components = [],
     ) {
         // Disable component rendering
-        // It happens before our pre-processer can intercept the compile
+        // It happens before our pre-processor can intercept the compile
         $this->bladeCompiler->withoutComponentTags();
         // Replaces <livewire /> tags with arrays so attributes can be analysed
         $this->bladeCompiler->precompiler(
@@ -130,8 +130,8 @@ STRING;
             );
 
             $includeVariables = $allVariablesList;
-            foreach ($includedViewAndVariable->getVariablesAndValues() as $expresion) {
-                preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]+)#s', $expresion, $variableNames);
+            foreach ($includedViewAndVariable->getVariablesAndValues() as $expression) {
+                preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]+)#s', $expression, $variableNames);
                 $includeVariables = [...$includeVariables, ...$variableNames[1]];
             }
 

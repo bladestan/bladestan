@@ -43,7 +43,7 @@ We provide custom PHPStan error formatter to better display the template errors:
  ------ -----------------------------------------------------------
   Line   app/Http/Controllers/PostCodexController.php
  ------ -----------------------------------------------------------
-  20     Call to an undefined method App\Entity\Post::getConten().
+  20     Call to an undefined method App\Entity\Post::getContent().
          rendered in: post_codex.blade.php:15
  ------ -----------------------------------------------------------
 ```
