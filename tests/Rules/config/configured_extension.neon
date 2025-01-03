@@ -5,4 +5,5 @@ parameters:
     bladestan:
         template_paths:
             - tests/Rules/templates
-            - tests/Rules/templates/nested/directory
+        namespaced_paths:
+            dummyNamespace: tests/Rules/templates/nested/directory
