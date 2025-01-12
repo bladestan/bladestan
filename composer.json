@@ -9,6 +9,7 @@
         "illuminate/contracts": "^9.0 || ^10.0 || ^11.0",
         "illuminate/filesystem": "^9.0 || ^10.0 || ^11.0",
         "illuminate/view": "^9.0 || ^10.0 || ^11.0",
+        "livewire/livewire": "^2.0 || ^3.0",
         "phpstan/phpstan": "^2.0"
     },
     "require-dev": {

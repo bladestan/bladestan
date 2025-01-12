@@ -3,6 +3,7 @@
 namespace Bladestan\Compiler;
 
 use Exception;
+use Livewire\Component;
 use Illuminate\View\AnonymousComponent;
 
 class LivewireTagCompiler extends ComponentTagCompiler
@@ -87,7 +88,7 @@ class LivewireTagCompiler extends ComponentTagCompiler
                 return '@livewireScripts';
             }
 
-            return $this->componentString(AnonymousComponent::class, $attributes);
+            return $this->componentString($component, $attributes);
         }, $value) ?? throw new Exception('preg_replace_callback error');
     }
 
@@ -96,7 +97,14 @@ class LivewireTagCompiler extends ComponentTagCompiler
      */
     protected function componentString(string $component, array $attributes): string
     {
-        $attrString = $this->attributesToString($attributes, $escapeBound = false);
-        return sprintf('<?php echo %s::resolve([%s])->render(); ?>', $component, $attrString);
+        $parameters = [
+            'view' => sprintf("'%s'", $component),
+            'data' => '[' . $this->attributesToString($attributes, $escapeBound = false) . ']',
+        ];
+
+        $class = Component::class;
+        $attrString = $this->attributesToString($parameters, $escapeBound = false);
+
+        return sprintf('<?php echo %s::resolve([%s])->render(); ?>', $class, $attrString);
     }
 }

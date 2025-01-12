@@ -3,4 +3,4 @@
 <?php
 
 /** file: foo.blade.php, line: 1 */
-echo Illuminate\View\AnonymousComponent::resolve(['b' => $b, 'c' => '' . e($c) . ''])->render();
+echo Livewire\Component::resolve(['view' => 'component', 'data' => ['b' => $b, 'c' => '' . e($c) . '']])->render();

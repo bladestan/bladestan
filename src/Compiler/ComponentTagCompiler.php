@@ -262,7 +262,7 @@ class ComponentTagCompiler
         $class = AnonymousComponent::class;
         $attrString = $this->attributesToString($parameters, $escapeBound = false);
 
-        return sprintf('<?php %s::resolve([%s]); ?>', $class, $attrString);
+        return sprintf('<?php echo %s::resolve([%s])->render(); ?>', $class, $attrString);
     }
 
     /**
