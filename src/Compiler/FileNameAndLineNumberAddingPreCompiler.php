@@ -20,6 +20,18 @@ final class FileNameAndLineNumberAddingPreCompiler
      */
     private const PHP_PARTIAL_COMMENT = '#^(\* )?@(var|param|method|extends|implements|template) +(.*?) \$[a-zA-Z_\x80-\xff][a-zA-Z0-9_\x80-\xff]*#';
 
+    /**
+     * @see https://regex101.com/r/rJXmfO/1
+     * @var string
+     */
+    private const START_OF_MULTILINE_COMPONENT = '/^.*<(?:livewire:|x-)\S+[^>](?:\s+[^>]+?="[^"]*?")*[^>]*$/';
+
+    /**
+     * @see https://regex101.com/r/IoNxTs/1
+     * @var string
+     */
+    private const END_OF_MULTILINE_COMPONENT = '/^(?:\s+[^>]+?="[^"]*?")*\s*\/?>/';
+
     public function __construct(
         private readonly Configuration $configuration
     ) {
@@ -43,11 +55,18 @@ final class FileNameAndLineNumberAddingPreCompiler
 
         $lines = explode(PHP_EOL, $fileContents);
 
+        $insideComponentTag = false;
         $lineNumber = 1;
 
         foreach ($lines as $key => $line) {
-            if (! $this->shouldSkip($line)) {
-                $lines[$key] = sprintf('/** file: %s, line: %d */', $fileName, $lineNumber) . $line;
+            if (! $insideComponentTag && ! $this->shouldSkip($line)) {
+                $lines[$key] = "/** file: {$fileName}, line: {$lineNumber} */{$line}";
+            }
+
+            if (! $insideComponentTag) {
+                $insideComponentTag = preg_match(self::START_OF_MULTILINE_COMPONENT, $line) === 1;
+            } else {
+                $insideComponentTag = preg_match(self::END_OF_MULTILINE_COMPONENT, $line) !== 1;
             }
 
             ++$lineNumber;

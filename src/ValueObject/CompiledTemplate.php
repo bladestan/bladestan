@@ -7,30 +7,10 @@ namespace Bladestan\ValueObject;
 final class CompiledTemplate
 {
     public function __construct(
-        private readonly string $bladeFilePath,
-        private readonly string $phpFilePath,
-        private readonly PhpFileContentsWithLineMap $phpFileContentsWithLineMap,
-        private readonly int $phpLine,
+        public readonly string $bladeFilePath,
+        public readonly string $phpFilePath,
+        public readonly PhpFileContentsWithLineMap $phpFileContentsWithLineMap,
+        public readonly int $phpLine,
     ) {
-    }
-
-    public function getBladeFilePath(): string
-    {
-        return $this->bladeFilePath;
-    }
-
-    public function getPhpFilePath(): string
-    {
-        return $this->phpFilePath;
-    }
-
-    public function getLineMap(): PhpFileContentsWithLineMap
-    {
-        return $this->phpFileContentsWithLineMap;
-    }
-
-    public function getPhpLine(): int
-    {
-        return $this->phpLine;
     }
 }

@@ -23,7 +23,7 @@ final class TemplateErrorsFactory
     ): array {
         $ruleErrors = [];
 
-        $phpToTemplateLines = $phpFileContentsWithLineMap->getPhpToTemplateLines();
+        $phpToTemplateLines = $phpFileContentsWithLineMap->phpToTemplateLines;
 
         foreach ($errors as $error) {
             $phpLineNumberInTemplate = (int) $error->getLine();

@@ -40,12 +40,12 @@ final class ViewRuleHelper
         $ruleErrors = [];
         foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
             $variablesAndTypes = $this->templateVariableTypesResolver->resolveArray(
-                $renderTemplateWithParameter->getParametersArray(),
+                $renderTemplateWithParameter->parametersArray,
                 $scope
             );
 
             $compiledTemplate = $this->compileToPhp(
-                $renderTemplateWithParameter->getTemplateFilePath(),
+                $renderTemplateWithParameter->templateFilePath,
                 $variablesAndTypes,
                 $scope->getFile(),
                 $callLike->getLine()
@@ -80,7 +80,7 @@ final class ViewRuleHelper
 
         /** @phpstan-ignore phpstanApi.method */
         $fileAnalyserResult = $fileAnalyser->analyseFile(
-            $compiledTemplate->getPhpFilePath(),
+            $compiledTemplate->phpFilePath,
             [],
             $this->registry,
             $collectorsRegistry,
@@ -94,9 +94,9 @@ final class ViewRuleHelper
 
         return $this->templateErrorsFactory->createErrors(
             $usefulRuleErrors,
-            $compiledTemplate->getPhpLine(),
-            $compiledTemplate->getBladeFilePath(),
-            $compiledTemplate->getLineMap(),
+            $compiledTemplate->phpLine,
+            $compiledTemplate->bladeFilePath,
+            $compiledTemplate->phpFileContentsWithLineMap,
         );
     }
 
@@ -120,7 +120,7 @@ final class ViewRuleHelper
             $variablesAndTypes
         );
 
-        $phpFileContents = $phpFileContentsWithLineMap->getPhpFileContents();
+        $phpFileContents = $phpFileContentsWithLineMap->phpFileContents;
 
         $tmpFilePath = sys_get_temp_dir() . '/' . md5($filePath) . '-blade-compiled.php';
         file_put_contents($tmpFilePath, $phpFileContents);

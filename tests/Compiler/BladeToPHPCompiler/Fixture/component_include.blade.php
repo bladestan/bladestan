@@ -1,10 +1,38 @@
-<x-component :$a :b="$b" c="{{$c}}">{{ $inner }}</x-component>
-<x-component :$a :b="$b" c="{{$c}}"/>
+<x-component :$a :b="$b" c="{{$x}}">{{ $inner }}</x-component>
+<x-component :$a :b="$b" c="{{$x}}"/>
 -----
 <?php
 
 /** file: foo.blade.php, line: 1 */
-echo Illuminate\View\AnonymousComponent::resolve(['view' => 'component', 'data' => ['a' => $a, 'b' => $b, 'c' => '' . e($c) . '']])->render();
+function () use ($a, $b, $x) {
+    $a = $a;
+    $b = $b;
+    $c = '' . e($x) . '';
+    function () use ($a, $b, $c) {
+        $slot = new \Illuminate\Support\HtmlString();
+        $attributes = new \Illuminate\View\ComponentAttributeBag();
+        /** file: components/component.blade.php, line: 1 */
+        echo e($a . $b);
+        /** file: components/component.blade.php, line: 2 */
+        echo e($slot);
+        /** file: components/component.blade.php, line: 3 */
+        echo e($c);
+    };
+};
 echo e($inner);
 /** file: foo.blade.php, line: 2 */
-echo Illuminate\View\AnonymousComponent::resolve(['view' => 'component', 'data' => ['a' => $a, 'b' => $b, 'c' => '' . e($c) . '']])->render();
+function () use ($a, $b, $x) {
+    $a = $a;
+    $b = $b;
+    $c = '' . e($x) . '';
+    function () use ($a, $b, $c) {
+        $slot = new \Illuminate\Support\HtmlString();
+        $attributes = new \Illuminate\View\ComponentAttributeBag();
+        /** file: components/component.blade.php, line: 1 */
+        echo e($a . $b);
+        /** file: components/component.blade.php, line: 2 */
+        echo e($slot);
+        /** file: components/component.blade.php, line: 3 */
+        echo e($c);
+    };
+};

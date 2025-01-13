@@ -51,8 +51,8 @@ final class ArrayStringToArrayConverterTest extends PHPStanTestCase
         yield ['123', []];
         yield ["'foo'", []];
         yield ['[]', []];
-        yield ['[10]', []];
-        yield ["['foo', 123]", []];
+        yield ['[10]', ['10']];
+        yield ["['foo', 123]", ["'foo'", '123']];
         yield ["[\$foo => 'bar']", []];
     }
 

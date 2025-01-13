@@ -4,27 +4,50 @@ declare(strict_types=1);
 
 namespace Bladestan\ValueObject;
 
-final class IncludedViewAndVariables
+final class IncludedViewAndVariables extends AbstractInlinedElement
 {
     /**
-     * @param array<string, string> $variablesAndValues
+     * @var array<string>
      */
-    public function __construct(
-        private readonly string $includedViewName,
-        private readonly array $variablesAndValues
-    ) {
+    private array $avalibleVariables;
+
+    public function preprocessTemplate(string $includedContent): string
+    {
+        return $includedContent;
     }
 
-    /**
-     * @return array<string, string>
-     */
-    public function getVariablesAndValues(): array
+    public function getInnerScopeVariableNames(array $avalibleVariables): array
     {
-        return $this->variablesAndValues;
+        // Extract variables used to create additional data
+        foreach ($this->variablesAndValues as $variableAndValue) {
+            preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)#s', $variableAndValue, $variableNames);
+            $avalibleVariables = [...$avalibleVariables, ...$variableNames[1]];
+        }
+
+        $this->avalibleVariables = $avalibleVariables;
+
+        return array_unique([...$this->avalibleVariables, ...array_keys($this->variablesAndValues)]);
     }
 
-    public function getIncludedViewName(): string
+    public function generateInlineRepresentation(string $includedContent): string
     {
-        return $this->includedViewName;
+        $use = $this->buildUse($this->avalibleVariables);
+
+        $variables = $this->variablesAndValues;
+        $includedViewVariables = implode(
+            PHP_EOL,
+            array_map(
+                static fn (string $key, string $value): string => "\${$key} = {$value};",
+                array_keys($variables),
+                $variables
+            )
+        );
+
+        return <<<STRING
+(function (){$use} {
+    {$includedViewVariables}
+    {$includedContent}
+});
+STRING;
     }
 }

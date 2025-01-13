@@ -11,55 +11,56 @@ use Bladestan\PhpParser\NodeVisitor\RemoveEnvVariableNodeVisitor;
 use Bladestan\PhpParser\SimplePhpParser;
 use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
+use Bladestan\ValueObject\AbstractInlinedElement;
+use Bladestan\ValueObject\ComponentAndVariables;
 use Bladestan\ValueObject\IncludedViewAndVariables;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
-use Illuminate\Contracts\View\Factory;
-use Illuminate\Events\Dispatcher;
-use Illuminate\Events\NullDispatcher;
 use Illuminate\Filesystem\Filesystem;
-use Illuminate\Foundation\Application;
+use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
-use Illuminate\View\Engines\EngineResolver;
+use Illuminate\View\DynamicComponent;
 use Illuminate\View\FileViewFinder;
 use PhpParser\Node;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
+use ReflectionClass;
+use ReflectionNamedType;
 use Throwable;
 
 final class BladeToPHPCompiler
 {
     /**
-     * @see https://regex101.com/r/2GrCYu/1
+     * @see https://regex101.com/r/dyG9A5/1
      * @var string
      */
-    private const VIEW_INCLUDE_REGEX = '/\$__env->make\( *\'(.*?)\' *, *(\[(.*?)?\] *,|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*? *,)? *\\\\Illuminate\\\\Support\\\\Arr::except\( *get_defined_vars\(\) *, *\[ *\'__data\' *, *\'__path\' *] *\) *\)->render\(\)/s';
+    private const VIEW_INCLUDE_REGEX = '/echo \$__env->make\( *\'(.*?)\' *, *(\[(?:.*?)?\] *,|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*? *,)? *\\\\Illuminate\\\\Support\\\\Arr::except\( *get_defined_vars\(\) *, *\[ *\'__data\' *, *\'__path\' *] *\) *\)->render\(\);/s';
 
     /**
-     * @see https://regex101.com/r/2GrCYu/1
+     * @see https://regex101.com/r/Fo7sHW/1
      * @var string
      */
-    private const VIEW_INCLUDE_REPLACE_REGEX = '/echo \$__env->make\( *\'%s\' *, *(\[(.*?)?\] *,|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*? *,)? *\\\\Illuminate\\\\Support\\\\Arr::except\( *get_defined_vars\(\) *, *\[ *\'__data\' *, *\'__path\' *] *\) *\)->render\(\);/s';
+    private const COMPONENT_REGEX = '/if \(isset\(\$component\)\).+? \$component = (.*?)::resolve\(.+?\$component->withAttributes\(\[.*?\]\);/s';
 
     /**
+     * @see https://regex101.com/r/XGSsgA/1
      * @var string
      */
-    private const USE_PLACEHOLDER = 'use(%s)';
+    private const ANONYMOUS_COMPONENT_REGEX = '/Illuminate\\\\View\\\\AnonymousComponent::resolve\(\[\'view\' => \'([^\']+)\', *\'data\' => (\[.*?\])\] \+ \(isset\(\$attributes\)/s';
 
     /**
+     * @see https://regex101.com/r/B3BbxW/1
      * @var string
      */
-    private const INCLUDED_CONTENT_PLACE_HOLDER = <<<STRING
-(function () %s {
-%s
-%s
-});
-STRING;
+    private const BACKED_COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\((\[(?:.*?)?\]) .+?\$component->withAttributes\(\[.*?\]\);/s';
 
     /**
-     * @param array<int, array{class: string, alias: string, prefix: string}> $components
+     * @see https://regex101.com/r/mt3PUM/1
+     * @var string
      */
+    private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?endif;/s';
+
     public function __construct(
         private readonly Filesystem $fileSystem,
         private readonly BladeCompiler $bladeCompiler,
@@ -71,20 +72,12 @@ STRING;
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
         private readonly SimplePhpParser $simplePhpParser,
-        private readonly array $components = [],
     ) {
-        // Disable component rendering
-        // It happens before our pre-processor can intercept the compile
-        $this->bladeCompiler->withoutComponentTags();
+        $this->bladeCompiler->component('dynamic-component', DynamicComponent::class);
         // Replaces <livewire /> tags with arrays so attributes can be analysed
         $this->bladeCompiler->precompiler(
             fn ($string): string => (new LivewireTagCompiler($this->bladeCompiler))->compile($string)
         );
-        // Replaces <x-... /> tags with arrays so attributes can be analysed
-        $this->bladeCompiler->precompiler(
-            fn (string $value): string => (new ComponentTagCompiler($this->bladeCompiler))->compile($value)
-        );
-        $this->setupBladeComponents();
     }
 
     /**
@@ -105,53 +98,89 @@ STRING;
         $rawPhpContent = $this->phpContentExtractor->extract($compiledBlade, $addPHPOpeningTag);
 
         // Recursively fetch and compile includes
-        foreach ($this->getIncludes($rawPhpContent) as $includedViewAndVariable) {
+        foreach ($this->getIncludes($rawPhpContent) as $inlinedElement) {
             try {
-                $includedFilePath = $this->fileViewFinder->find($includedViewAndVariable->getIncludedViewName());
+                $includedFilePath = $this->fileViewFinder->find($inlinedElement->includedViewName);
+                $includedContent = $this->fileSystem->get($includedFilePath);
+                $includedContent = $inlinedElement->preprocessTemplate($includedContent);
                 $includedContent = $this->inlineInclude(
                     $includedFilePath,
-                    $this->fileSystem->get($includedFilePath),
-                    array_unique(
-                        [...$allVariablesList, ...array_keys($includedViewAndVariable->getVariablesAndValues())]
-                    ),
+                    $includedContent,
+                    $inlinedElement->getInnerScopeVariableNames($allVariablesList),
                     false
                 );
             } catch (Throwable) {
                 $includedContent = '';
             }
 
-            $includedViewVariables = implode(
-                PHP_EOL,
-                array_map(
-                    static fn (string $key, string $value): string => '$' . $key . ' = ' . $value . ';',
-                    array_keys($includedViewAndVariable->getVariablesAndValues()),
-                    $includedViewAndVariable->getVariablesAndValues()
-                )
-            );
-
-            $includeVariables = $allVariablesList;
-            foreach ($includedViewAndVariable->getVariablesAndValues() as $expression) {
-                preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]+)#s', $expression, $variableNames);
-                $includeVariables = [...$includeVariables, ...$variableNames[1]];
-            }
-
-            $usedVariablesString = implode(
-                ', ',
-                array_map(static fn (string $variable): string => '$' . $variable, array_unique($includeVariables))
-            );
-            $rawPhpContent = preg_replace(
-                sprintf(self::VIEW_INCLUDE_REPLACE_REGEX, preg_quote($includedViewAndVariable->getIncludedViewName())),
-                sprintf(
-                    self::INCLUDED_CONTENT_PLACE_HOLDER,
-                    $usedVariablesString !== '' ? sprintf(self::USE_PLACEHOLDER, $usedVariablesString) : '',
-                    $includedViewVariables,
-                    $includedContent
-                ),
+            $rawPhpContent = str_replace(
+                $inlinedElement->rawPhpContent,
+                $inlinedElement->generateInlineRepresentation($includedContent),
                 $rawPhpContent
-            ) ?? $rawPhpContent;
+            );
         }
 
         return $rawPhpContent;
+    }
+
+    public function bubbleUpImports(string $rawPhpContent): string
+    {
+        preg_match_all('/use .+?;/', $rawPhpContent, $imports);
+        foreach ($imports[0] as $import) {
+            $rawPhpContent = str_replace($import, '', $rawPhpContent);
+        }
+
+        $import = implode("\n", array_unique($imports[0]));
+        return str_replace("<?php\n", "<?php\n{$import}", $rawPhpContent);
+    }
+
+    public function resolveComponents(string $rawPhpContent): string
+    {
+        preg_match_all(self::BACKED_COMPONENT_REGEX, $rawPhpContent, $components, PREG_SET_ORDER);
+        foreach ($components as $component) {
+            $class = $component[1];
+            $arrayString = trim($component[2], ' ,');
+            $attributes = $this->arrayStringToArrayConverter->convert($arrayString);
+
+            // Resolve any addtional required arguments
+            if (class_exists($class) && method_exists($class, '__construct')) {
+                $parameters = (new ReflectionClass($class))->getMethod('__construct')
+                    ->getParameters();
+                foreach ($parameters as $parameter) {
+                    if ($parameter->isDefaultValueAvailable()) {
+                        continue;
+                    }
+
+                    $paramName = $parameter->getName();
+                    if (isset($attributes[$paramName])) {
+                        continue;
+                    }
+
+                    $paramType = $parameter->getType();
+                    if (! $paramType instanceof ReflectionNamedType) {
+                        continue;
+                    }
+
+                    if ($paramType->allowsNull()) {
+                        $attributes[$paramName] = 'null';
+                        continue;
+                    }
+
+                    $paramClass = $paramType->getName();
+                    if (class_exists($paramClass)) {
+                        $attributes[$paramName] = "resolve({$paramClass}::class)";
+                        continue;
+                    }
+                }
+            }
+
+            $attrString = collect($attributes)
+                ->map(fn (string $value, string $attribute): string => "{$attribute}: {$value}")
+                ->implode(', ');
+            $rawPhpContent = str_replace($component[0], "\$component = new {$class}({$attrString});", $rawPhpContent);
+        }
+
+        return preg_replace(self::COMPONENT_END_REGEX, '', $rawPhpContent) ?? '';
     }
 
     /**
@@ -163,11 +192,13 @@ STRING;
         array $variablesAndTypes
     ): PhpFileContentsWithLineMap {
         $allVariablesList = array_map(
-            static fn (VariableAndType $variableAndType): string => $variableAndType->getVariable(),
+            static fn (VariableAndType $variableAndType): string => $variableAndType->variable,
             $variablesAndTypes
         );
 
         $rawPhpContent = $this->inlineInclude($filePath, $fileContents, $allVariablesList, true);
+        $rawPhpContent = $this->resolveComponents($rawPhpContent);
+        $rawPhpContent = $this->bubbleUpImports($rawPhpContent);
 
         $decoratedPhpContent = $this->decoratePhpContent($rawPhpContent, $variablesAndTypes);
         $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($decoratedPhpContent);
@@ -210,48 +241,49 @@ STRING;
     }
 
     /**
-     * @return IncludedViewAndVariables[]
+     * @return AbstractInlinedElement[]
      */
     private function getIncludes(string $compiled): array
     {
-        preg_match_all(self::VIEW_INCLUDE_REGEX, $compiled, $includes);
-
         $return = [];
 
-        foreach ($includes[1] as $i => $include) {
-            $arrayString = trim($includes[2][$i], ' ,');
+        preg_match_all(self::VIEW_INCLUDE_REGEX, $compiled, $includes, PREG_SET_ORDER);
+        foreach ($includes as $include) {
+            $arrayString = trim($include[2] ?? '', ' ,');
 
             $array = $this->arrayStringToArrayConverter->convert($arrayString);
 
-            $return[] = new IncludedViewAndVariables($include, $array);
+            $return[] = new IncludedViewAndVariables($include[0], $include[1], $array);
+        }
+
+        preg_match_all(self::COMPONENT_REGEX, $compiled, $components, PREG_SET_ORDER);
+        foreach ($components as $component) {
+            if ($component[1] !== AnonymousComponent::class) {
+                continue;
+            }
+
+            preg_match(self::ANONYMOUS_COMPONENT_REGEX, $component[0], $matches);
+
+            $view = $matches[1] ?? '';
+            if ($view === '') {
+                continue;
+            }
+
+            $includeVariables = $matches[2] ?? '[]';
+            $includeVariables = $this->arrayStringToArrayConverter->convert($includeVariables);
+            // Filter out attributes
+            $includeVariables = array_filter($includeVariables, function (string $key): bool {
+                return preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
+            }, ARRAY_FILTER_USE_KEY);
+
+            $return[] = new ComponentAndVariables(
+                $component[0],
+                $view,
+                $includeVariables,
+                $this->arrayStringToArrayConverter
+            );
         }
 
         return $return;
-    }
-
-    private function setupBladeComponents(): void
-    {
-        $currentWorkingDirectory = getcwd();
-
-        if ($currentWorkingDirectory === false) {
-            return;
-        }
-
-        $application = Application::getInstance();
-        $application->bind(
-            Factory::class,
-            fn (): \Illuminate\View\Factory => new \Illuminate\View\Factory(
-                new EngineResolver(),
-                $this->fileViewFinder,
-                new NullDispatcher(new Dispatcher())
-            )
-        );
-
-        $application->alias('view', 'foo');
-
-        // Register components
-        foreach ($this->components as $component) {
-            $this->bladeCompiler->component($component['class'], $component['alias'], $component['prefix']);
-        }
     }
 }

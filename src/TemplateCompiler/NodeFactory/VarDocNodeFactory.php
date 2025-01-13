@@ -27,7 +27,7 @@ final class VarDocNodeFactory
      */
     public static function setDocBlock(string $variable, string $type): void
     {
-        $prependVarTypesDocBlocks = sprintf('/** @var %s $%s */', $type, $variable);
+        $prependVarTypesDocBlocks = "/** @var {$type} \${$variable} */";
 
         $docNop = new Nop();
         $docNop->setDocComment(new Doc($prependVarTypesDocBlocks));
@@ -42,12 +42,12 @@ final class VarDocNodeFactory
     public function createDocNodes(array $variablesAndTypes): array
     {
         foreach ($variablesAndTypes as $variableAndType) {
-            if (isset(self::$docNodes[$variableAndType->getVariable()])) {
+            if (isset(self::$docNodes[$variableAndType->variable])) {
                 // avoids overwriting the same variable, if it is preset
                 continue;
             }
 
-            self::$docNodes[$variableAndType->getVariable()] = $this->createDocNop($variableAndType);
+            self::$docNodes[$variableAndType->variable] = $this->createDocNop($variableAndType);
         }
 
         $values = array_values(self::$docNodes);
@@ -60,11 +60,7 @@ final class VarDocNodeFactory
 
     private function createDocNop(VariableAndType $variableAndType): Nop
     {
-        $prependVarTypesDocBlocks = sprintf(
-            '/** @var %s $%s */',
-            $variableAndType->getTypeAsString(),
-            $variableAndType->getVariable()
-        );
+        $prependVarTypesDocBlocks = "/** @var {$variableAndType->getTypeAsString()} \${$variableAndType->variable} */";
 
         // doc types node
         $docNop = new Nop();

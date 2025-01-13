@@ -11,19 +11,9 @@ use PHPStan\Type\VerbosityLevel;
 final class VariableAndType
 {
     public function __construct(
-        private readonly string $variable,
+        public readonly string $variable,
         private readonly Type $type
     ) {
-    }
-
-    public function getVariable(): string
-    {
-        return $this->variable;
-    }
-
-    public function getType(): Type
-    {
-        return $this->type;
     }
 
     public function getTypeAsString(): string

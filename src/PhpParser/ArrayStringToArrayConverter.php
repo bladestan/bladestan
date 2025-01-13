@@ -15,7 +15,7 @@ use PhpParser\Parser\Php7;
 use PhpParser\PrettyPrinter\Standard;
 
 /**
- * This class converts the string `['foo' => 'bar', 'bar' => 'baz']` to actual PHP array `['foo' => 'bar', 'bar' => 'baz']`
+ * This class converts the string `"['foo', 'bar' => 'baz']"` to actual PHP array `[0 => "'foo'", 'bar' => "'baz'"]`
  *
  * @see \Bladestan\Tests\PHPParser\ArrayStringToArrayConverterTest
  */
@@ -31,7 +31,7 @@ final class ArrayStringToArrayConverter
     }
 
     /**
-     * @return array<string, string>
+     * @return array<string>
      */
     public function convert(string $array): array
     {
@@ -59,19 +59,18 @@ final class ArrayStringToArrayConverter
         $result = [];
 
         foreach ($array->items as $item) {
-            if (! $item->key instanceof Expr) {
-                continue;
-            }
-
-            $key = $this->resolveKey($item->key);
-
-            if (! is_string($key)) {
-                continue;
-            }
-
             $value = $this->standard->prettyPrintExpr($item->value);
 
-            $result[$key] = $value;
+            if ($item->key instanceof Expr) {
+                $key = $this->resolveKey($item->key);
+                if (! is_string($key) && ! is_int($key)) {
+                    continue;
+                }
+
+                $result[$key] = $value;
+            } else {
+                $result[] = $value;
+            }
         }
 
         return $result;

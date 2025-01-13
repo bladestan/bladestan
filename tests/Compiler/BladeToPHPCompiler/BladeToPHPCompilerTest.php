@@ -7,6 +7,12 @@ namespace Bladestan\Tests\Compiler\BladeToPHPCompiler;
 use Bladestan\Compiler\BladeToPHPCompiler;
 use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Bladestan\Tests\TestUtils;
+use Illuminate\Contracts\View\Factory;
+use Illuminate\Events\Dispatcher;
+use Illuminate\Events\NullDispatcher;
+use Illuminate\Foundation\Application;
+use Illuminate\View\Engines\EngineResolver;
+use Illuminate\View\FileViewFinder;
 use Iterator;
 use PHPStan\Testing\PHPStanTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -26,6 +32,23 @@ final class BladeToPHPCompilerTest extends PHPStanTestCase
 
         $this->bladeToPHPCompiler = self::getContainer()->getByType(BladeToPHPCompiler::class);
 
+        $basePath = realpath(__DIR__ . '/../../skeleton');
+        assert(is_string($basePath));
+        $application = Application::getInstance();
+        $application->setBasePath($basePath);
+
+        $fileViewFinder = self::getContainer()->getByType(FileViewFinder::class);
+        $fileViewFinder->setPaths([$basePath . '/resources/views']);
+
+        $application->bind(
+            Factory::class,
+            fn (): \Illuminate\View\Factory => new \Illuminate\View\Factory(
+                new EngineResolver(),
+                $fileViewFinder,
+                new NullDispatcher(new Dispatcher())
+            )
+        );
+
         // Setup the variable names and types that'll be available to all templates
         $this->variables = [];
     }
@@ -41,7 +64,7 @@ final class BladeToPHPCompilerTest extends PHPStanTestCase
             $this->variables
         );
 
-        $this->assertSame($expectedPhpContents, $phpFileContentsWithLineMap->getPhpFileContents());
+        $this->assertSame($expectedPhpContents, $phpFileContentsWithLineMap->phpFileContents);
     }
 
     public static function provideData(): Iterator
