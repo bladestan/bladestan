@@ -2,7 +2,7 @@
 
 namespace Bladestan\Compiler;
 
-use Exception;
+use Bladestan\Exception\ShouldNotHappenException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Str;
 use Illuminate\View\Compilers\BladeCompiler;
@@ -51,16 +51,16 @@ class LivewireTagCompiler
 
             // Convert all kebab-cased to camelCase.
             $attributes = collect($attributes)
-                ->mapWithKeys(function (string $value, string|int $key): array {
+                ->mapWithKeys(function (mixed $value, string|int $key): array {
                     // Skip snake_cased attributes.
-                    if (is_int($key) || str($key)->contains('_')) {
+                    if (is_int($key) || Str::of($key)->contains('_')) {
                         return [
                             strval($key) => $value,
                         ];
                     }
 
                     return [
-                        (string) str($key)
+                        (string) Str::of($key)
                             ->camel() => $value,
                     ];
                 })->toArray();
@@ -68,16 +68,16 @@ class LivewireTagCompiler
             // Convert all snake_cased attributes to camelCase, and merge with
             // existing attributes so both snake and camel are available.
             $attributes = collect($attributes)
-                ->mapWithKeys(function (string $value, string $key): array {
+                ->mapWithKeys(function (mixed $value, string $key): array {
                     // Skip snake_cased attributes
-                    if (! str($key)->contains('_')) {
+                    if (! Str::of($key)->contains('_')) {
                         return [
                             strval($key) => false,
                         ];
                     }
 
                     return [
-                        (string) str($key)
+                        (string) Str::of($key)
                             ->camel() => $value,
                     ];
                 })->filter()
@@ -100,7 +100,7 @@ class LivewireTagCompiler
             }
 
             return $this->componentString($component, $attributes);
-        }, $value) ?? throw new Exception('preg_replace_callback error');
+        }, $value) ?? throw new ShouldNotHappenException('preg_replace_callback error');
     }
 
     /**
@@ -155,7 +155,10 @@ class LivewireTagCompiler
 
             if ($mountArgs !== []) {
                 $attrString = collect($mountArgs)
-                    ->map(fn (string $value, string $attribute): string => "{$attribute}: {$value}")
+                    ->map(function (mixed $value, string $attribute): string {
+                        assert(is_string($value));
+                        return "{$attribute}: {$value}";
+                    })
                     ->implode(', ');
 
                 $mount = " \$component->mount({$attrString});";
@@ -163,7 +166,10 @@ class LivewireTagCompiler
         }
 
         $properties = collect($attributes)
-            ->map(fn (string $value, string $attribute): string => "\$component->{$attribute} = {$value}")
+            ->map(function (mixed $value, string $attribute): string {
+                assert(is_string($value));
+                return "\$component->{$attribute} = {$value}";
+            })
             ->implode('; ');
         if ($properties) {
             $properties = " {$properties};";
@@ -257,7 +263,7 @@ class LivewireTagCompiler
             $pattern,
             fn (array $matches): string => " :{$matches[1]}=\"\${$matches[1]}\"",
             $value
-        ) ?? throw new Exception('preg_replace_callback error');
+        ) ?? throw new ShouldNotHappenException('preg_replace_callback error');
     }
 
     /**
@@ -270,7 +276,11 @@ class LivewireTagCompiler
             \{\{\s*(\\\$attributes(?:[^}]+?(?<!\s))?)\s*\}\} # exact match of attributes variable being echoed
         /x";
 
-        return preg_replace($pattern, ' :attributes="$1"', $attributeString) ?? $attributeString;
+        return preg_replace(
+            $pattern,
+            ' :attributes="$1"',
+            $attributeString
+        ) ?? throw new ShouldNotHappenException('preg_replace error');
     }
 
     /**
@@ -290,7 +300,7 @@ class LivewireTagCompiler
                 return $match[0];
             },
             $attributeString
-        ) ?? throw new Exception('preg_replace_callback error');
+        ) ?? throw new ShouldNotHappenException('preg_replace_callback error');
     }
 
     /**
@@ -310,7 +320,7 @@ class LivewireTagCompiler
                 return $match[0];
             },
             $attributeString
-        ) ?? throw new Exception('preg_replace_callback error');
+        ) ?? throw new ShouldNotHappenException('preg_replace_callback error');
     }
 
     /**
@@ -325,7 +335,11 @@ class LivewireTagCompiler
             =             # only match attributes that have a value
         /xm";
 
-        return preg_replace($pattern, ' bind:$1=', $attributeString) ?? $attributeString;
+        return preg_replace(
+            $pattern,
+            ' bind:$1=',
+            $attributeString
+        ) ?? throw new ShouldNotHappenException('preg_replace error');
     }
 
     /**

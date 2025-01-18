@@ -80,7 +80,7 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
                 $templateFilePath = $errorMetadata['template_file_path'] ?? null;
                 $templateLine = $errorMetadata['template_line'] ?? null;
 
-                if ($templateFilePath && $templateLine) {
+                if (is_string($templateFilePath) && is_int($templateLine)) {
                     /** @phpstan-ignore phpstanApi.method */
                     $relativeTemplateFileLine = $this->simpleRelativePathHelper->getRelativePath(
                         $templateFilePath

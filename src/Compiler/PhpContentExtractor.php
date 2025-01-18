@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Bladestan\Compiler;
 
+use Bladestan\Exception\ShouldNotHappenException;
+
 final class PhpContentExtractor
 {
     /**
@@ -32,7 +34,11 @@ final class PhpContentExtractor
         }
 
         // Merge multiple code blocks appearing on a single line
-        $bladeCompiledContent = preg_replace('#\s*\?>.*?<\?php\s*#', ' ', $bladeCompiledContent) ?? '';
+        $bladeCompiledContent = preg_replace(
+            '#\s*\?>.*?<\?php\s*#',
+            ' ',
+            $bladeCompiledContent
+        ) ?? throw new ShouldNotHappenException('preg_replace error');
 
         preg_match_all(self::PHP_OPEN_CLOSE_TAGS_REGEX, $bladeCompiledContent, $matches, PREG_SET_ORDER);
 

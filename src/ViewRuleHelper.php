@@ -31,36 +31,30 @@ final class ViewRuleHelper
     }
 
     /**
-     * @param RenderTemplateWithParameters[] $renderTemplatesWithParameters
-     *
      * @return list<IdentifierRuleError>
      */
-    public function processNode(CallLike $callLike, Scope $scope, array $renderTemplatesWithParameters): array
-    {
-        $ruleErrors = [];
-        foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
-            $variablesAndTypes = $this->templateVariableTypesResolver->resolveArray(
-                $renderTemplateWithParameter->parametersArray,
-                $scope
-            );
+    public function processNode(
+        CallLike $callLike,
+        Scope $scope,
+        RenderTemplateWithParameters $renderTemplateWithParameters
+    ): array {
+        $variablesAndTypes = $this->templateVariableTypesResolver->resolveArray(
+            $renderTemplateWithParameters->parametersArray,
+            $scope
+        );
 
-            $compiledTemplate = $this->compileToPhp(
-                $renderTemplateWithParameter->templateFilePath,
-                $variablesAndTypes,
-                $scope->getFile(),
-                $callLike->getLine()
-            );
+        $compiledTemplate = $this->compileToPhp(
+            $renderTemplateWithParameters->templateFilePath,
+            $variablesAndTypes,
+            $scope->getFile(),
+            $callLike->getLine()
+        );
 
-            if (! $compiledTemplate instanceof CompiledTemplate) {
-                continue;
-            }
-
-            $currentRuleErrors = $this->processTemplateFilePath($compiledTemplate);
-
-            $ruleErrors = array_merge($ruleErrors, $currentRuleErrors);
+        if (! $compiledTemplate instanceof CompiledTemplate) {
+            return [];
         }
 
-        return $ruleErrors;
+        return $this->processTemplateFilePath($compiledTemplate);
     }
 
     public function setRegistry(Registry $registry): void

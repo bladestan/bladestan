@@ -37,7 +37,7 @@ final class FileNameAndLineNumberAddingPreCompiler
     ) {
     }
 
-    public function completeLineCommentsToBladeContents(string $fileName, string $fileContents): string
+    public function getRelativePath(string $fileName): string
     {
         foreach ($this->configuration->getTemplatePaths() as $templatePath) {
             $templatePath = rtrim($templatePath, '/') . '/';
@@ -53,6 +53,12 @@ final class FileNameAndLineNumberAddingPreCompiler
             return '';
         }
 
+        return $fileName;
+    }
+
+    public function completeLineCommentsToBladeContents(string $fileName, string $fileContents): string
+    {
+        $fileName = $this->getRelativePath($fileName);
         $lines = explode(PHP_EOL, $fileContents);
 
         $insideComponentTag = false;

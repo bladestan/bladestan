@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests;
 
+use Illuminate\Support\Str;
 use Iterator;
-use Webmozart\Assert\Assert;
 
 final class TestUtils
 {
@@ -14,12 +14,12 @@ final class TestUtils
      */
     public static function splitFixture(string $filePath): array
     {
-        Assert::fileExists($filePath);
+        assert(file_exists($filePath));
 
         /** @var string $fileContents */
         $fileContents = file_get_contents($filePath);
 
-        $stringsCollection = str($fileContents)
+        $stringsCollection = Str::of($fileContents)
             ->split("#-----\n#")
             ->values();
 

@@ -11,6 +11,19 @@ use PHPStan\Rules\RuleErrorBuilder;
 
 final class TemplateErrorsFactory
 {
+    public function createError(
+        string $message,
+        string $identifier,
+        int $phpFileLine,
+        string $phpFilePath,
+    ): IdentifierRuleError {
+        return RuleErrorBuilder::message($message)
+            ->file($phpFilePath)
+            ->line($phpFileLine)
+            ->identifier($identifier)
+            ->build();
+    }
+
     /**
      * @param Error[] $errors
      * @return list<IdentifierRuleError>
@@ -22,6 +35,10 @@ final class TemplateErrorsFactory
         PhpFileContentsWithLineMap $phpFileContentsWithLineMap
     ): array {
         $ruleErrors = [];
+
+        foreach ($phpFileContentsWithLineMap->errors as $error) {
+            $ruleErrors[] = $this->createError($error[0], $error[1], $phpFileLine, $phpFilePath);
+        }
 
         $phpToTemplateLines = $phpFileContentsWithLineMap->phpToTemplateLines;
 
@@ -36,7 +53,7 @@ final class TemplateErrorsFactory
 
             assert($error->getIdentifier() !== null);
 
-            $ruleError = RuleErrorBuilder::message($error->getMessage())
+            $ruleErrors[] = RuleErrorBuilder::message($error->getMessage())
                 ->file($phpFilePath)
                 ->line($phpFileLine)
                 ->metadata([
@@ -45,7 +62,6 @@ final class TemplateErrorsFactory
                 ])
                 ->identifier($error->getIdentifier())
                 ->build();
-            $ruleErrors[] = $ruleError;
         }
 
         return $ruleErrors;

@@ -16,7 +16,6 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeVisitorAbstract;
-use Webmozart\Assert\Assert;
 
 /**
  * @api part of phpstan node visitors
@@ -91,8 +90,6 @@ final class ViewFunctionArgumentsNodeVisitor extends NodeVisitorAbstract
                 $rootViewNode->var->getArgs() !== []
             ) {
                 $cacheKey = Json::encode($rootViewNode->var);
-                Assert::string($cacheKey);
-                Assert::notEmpty($cacheKey);
 
                 //  = md5(json_encode($rootViewNode->var));
 

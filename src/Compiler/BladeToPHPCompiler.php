@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bladestan\Compiler;
 
 use Bladestan\Blade\PhpLineToTemplateLineResolver;
+use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\RemoveEnvVariableNodeVisitor;
@@ -15,11 +16,14 @@ use Bladestan\ValueObject\AbstractInlinedElement;
 use Bladestan\ValueObject\ComponentAndVariables;
 use Bladestan\ValueObject\IncludedViewAndVariables;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
+use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
 use Illuminate\View\DynamicComponent;
 use Illuminate\View\FileViewFinder;
+use InvalidArgumentException;
+use PhpParser\Error as ParserError;
 use PhpParser\Node;
 use PhpParser\Node\Stmt;
 use PhpParser\NodeTraverser;
@@ -27,7 +31,6 @@ use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
 use ReflectionClass;
 use ReflectionNamedType;
-use Throwable;
 
 final class BladeToPHPCompiler
 {
@@ -61,6 +64,11 @@ final class BladeToPHPCompiler
      */
     private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?endif;/s';
 
+    /**
+     * @var list<array{0: string, 1: string}>
+     */
+    private array $errors;
+
     public function __construct(
         private readonly Filesystem $fileSystem,
         private readonly BladeCompiler $bladeCompiler,
@@ -76,7 +84,7 @@ final class BladeToPHPCompiler
         $this->bladeCompiler->component('dynamic-component', DynamicComponent::class);
         // Replaces <livewire /> tags with arrays so attributes can be analysed
         $this->bladeCompiler->precompiler(
-            fn ($string): string => (new LivewireTagCompiler($this->bladeCompiler))->compile($string)
+            fn (string $string): string => (new LivewireTagCompiler($this->bladeCompiler))->compile($string)
         );
     }
 
@@ -94,24 +102,39 @@ final class BladeToPHPCompiler
             ->completeLineCommentsToBladeContents($filePath, $fileContents);
 
         // Extract PHP content from HTML and PHP mixed content
-        $compiledBlade = $this->bladeCompiler->compileString($fileContents);
-        $rawPhpContent = $this->phpContentExtractor->extract($compiledBlade, $addPHPOpeningTag);
+        $rawPhpContent = '';
+        try {
+            /** @throws InvalidArgumentException */
+            $compiledBlade = $this->bladeCompiler->compileString($fileContents);
+            /** @throws ParserError */
+            $this->simplePhpParser->parse($compiledBlade);
+            $rawPhpContent = $this->phpContentExtractor->extract($compiledBlade, $addPHPOpeningTag);
+        } catch (ParserError) {
+            $filePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
+            $this->errors[] = ["View [{$filePath}] contains syntx errors.", 'bladestan.parsing'];
+        } catch (InvalidArgumentException $exception) {
+            $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
+        }
 
         // Recursively fetch and compile includes
         foreach ($this->getIncludes($rawPhpContent) as $inlinedElement) {
             try {
+                /** @throws InvalidArgumentException */
                 $includedFilePath = $this->fileViewFinder->find($inlinedElement->includedViewName);
                 $includedContent = $this->fileSystem->get($includedFilePath);
-                $includedContent = $inlinedElement->preprocessTemplate($includedContent);
-                $includedContent = $this->inlineInclude(
-                    $includedFilePath,
-                    $includedContent,
-                    $inlinedElement->getInnerScopeVariableNames($allVariablesList),
-                    false
-                );
-            } catch (Throwable) {
+            } catch (InvalidArgumentException|FileNotFoundException $exception) {
+                $includedFilePath = '';
                 $includedContent = '';
+                $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
             }
+
+            $includedContent = $inlinedElement->preprocessTemplate($includedContent);
+            $includedContent = $this->inlineInclude(
+                $includedFilePath,
+                $includedContent,
+                $inlinedElement->getInnerScopeVariableNames($allVariablesList),
+                false
+            );
 
             $rawPhpContent = str_replace(
                 $inlinedElement->rawPhpContent,
@@ -180,7 +203,11 @@ final class BladeToPHPCompiler
             $rawPhpContent = str_replace($component[0], "\$component = new {$class}({$attrString});", $rawPhpContent);
         }
 
-        return preg_replace(self::COMPONENT_END_REGEX, '', $rawPhpContent) ?? '';
+        return preg_replace(
+            self::COMPONENT_END_REGEX,
+            '',
+            $rawPhpContent
+        ) ?? throw new ShouldNotHappenException('preg_replace error');
     }
 
     /**
@@ -191,6 +218,8 @@ final class BladeToPHPCompiler
         string $fileContents,
         array $variablesAndTypes
     ): PhpFileContentsWithLineMap {
+        $this->errors = [];
+
         $allVariablesList = array_map(
             static fn (VariableAndType $variableAndType): string => $variableAndType->variable,
             $variablesAndTypes
@@ -202,7 +231,7 @@ final class BladeToPHPCompiler
 
         $decoratedPhpContent = $this->decoratePhpContent($rawPhpContent, $variablesAndTypes);
         $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($decoratedPhpContent);
-        return new PhpFileContentsWithLineMap($decoratedPhpContent, $phpLinesToTemplateLines);
+        return new PhpFileContentsWithLineMap($decoratedPhpContent, $phpLinesToTemplateLines, $this->errors);
     }
 
     /**
@@ -251,9 +280,13 @@ final class BladeToPHPCompiler
         foreach ($includes as $include) {
             $arrayString = trim($include[2] ?? '', ' ,');
 
-            $array = $this->arrayStringToArrayConverter->convert($arrayString);
+            $data = $this->arrayStringToArrayConverter->convert($arrayString);
+            // Filter out attributes
+            $data = array_filter($data, function (string|int $key): bool {
+                return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
+            }, ARRAY_FILTER_USE_KEY);
 
-            $return[] = new IncludedViewAndVariables($include[0], $include[1], $array);
+            $return[] = new IncludedViewAndVariables($include[0], $include[1], $data);
         }
 
         preg_match_all(self::COMPONENT_REGEX, $compiled, $components, PREG_SET_ORDER);
@@ -272,8 +305,8 @@ final class BladeToPHPCompiler
             $includeVariables = $matches[2] ?? '[]';
             $includeVariables = $this->arrayStringToArrayConverter->convert($includeVariables);
             // Filter out attributes
-            $includeVariables = array_filter($includeVariables, function (string $key): bool {
-                return preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
+            $includeVariables = array_filter($includeVariables, function (string|int $key): bool {
+                return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
             }, ARRAY_FILTER_USE_KEY);
 
             $return[] = new ComponentAndVariables(

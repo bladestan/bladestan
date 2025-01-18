@@ -14,6 +14,7 @@ use Illuminate\Support\HtmlString;
 use Illuminate\View\Component;
 use Illuminate\View\ComponentAttributeBag;
 use Illuminate\View\Factory;
+use InvalidArgumentException;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
@@ -51,31 +52,31 @@ final class BladeViewMethodsMatcher
     }
 
     /**
-     * @return RenderTemplateWithParameters[]
+     * @throws InvalidArgumentException
      */
-    public function match(MethodCall $methodCall, Scope $scope): array
+    public function match(MethodCall $methodCall, Scope $scope): ?RenderTemplateWithParameters
     {
         $methodName = $this->resolveName($methodCall);
         if ($methodName === null) {
-            return [];
+            return null;
         }
 
         $calledOnType = $scope->getType($methodCall->var);
 
         if (! $this->isCalledOnTypeABladeView($calledOnType, $methodName)) {
-            return [];
+            return null;
         }
 
         $templateNameArg = $this->findTemplateNameArg($methodName, $methodCall);
         if (! $templateNameArg instanceof Arg) {
-            return [];
+            return null;
         }
 
         $template = $templateNameArg->value;
 
-        $resolvedTemplateFilePaths = $this->templateFilePathResolver->resolveExistingFilePaths($template, $scope);
-        if ($resolvedTemplateFilePaths === []) {
-            return [];
+        $resolvedTemplateFilePath = $this->templateFilePathResolver->resolveExistingFilePath($template, $scope);
+        if ($resolvedTemplateFilePath === null) {
+            return null;
         }
 
         $arg = $this->findTemplateDataArgument($methodName, $methodCall);
@@ -93,13 +94,7 @@ final class BladeViewMethodsMatcher
             $parametersArray->items[] = new ArrayItem($type, new String_('attributes'));
         }
 
-        $result = [];
-
-        foreach ($resolvedTemplateFilePaths as $resolvedTemplateFilePath) {
-            $result[] = new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
-        }
-
-        return $result;
+        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
     }
 
     private function resolveName(MethodCall $methodCall): ?string

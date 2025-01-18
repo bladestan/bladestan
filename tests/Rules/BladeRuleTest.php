@@ -83,6 +83,16 @@ final class BladeRuleTest extends RuleTestCase
 
         yield [__DIR__ . '/Fixture/view-render-int.php', []];
 
+        yield [__DIR__ . '/Fixture/missing-template.php', [['View [missing.view] not found.', 5]]];
+
+        yield [__DIR__ . '/Fixture/missing-include.php', [['View [missing.view] not found.', 5]]];
+
+        yield [__DIR__ . '/Fixture/missing-component.php', [['View [missing.component] not found.', 5]]];
+
+        yield [__DIR__ . '/Fixture/compile-error.php', [
+            ['View [compile-error.blade.php] contains syntx errors.', 5],
+        ]];
+
         yield [__DIR__ . '/Fixture/skip-form-errors.php', []];
 
         yield [__DIR__ . '/Fixture/laravel-response-function.php', [

@@ -1,5 +1,5 @@
 parameters:
-    level: 8
+    level: max
 
     paths:
         - src
@@ -9,3 +9,20 @@ parameters:
         - 'tests/*/Fixture/*'
         - 'tests/Rules/data/*'
         - 'tests/Rules/templates//*'
+
+    exceptions:
+        reportUncheckedExceptionDeadCatch: true
+        implicitThrows: false
+        check:
+            missingCheckedExceptionInThrows: true
+            tooWideThrowType: true
+        uncheckedExceptionClasses:
+            - 'Bladestan\Exception\ShouldNotHappenException'
+            - 'Nette\Utils\JsonException'
+            - 'ReflectionException'
+            - 'Webmozart\Assert\InvalidArgumentException'
+
+    ignoreErrors:
+        -
+            identifier: missingType.checkedException
+            path: tests/*

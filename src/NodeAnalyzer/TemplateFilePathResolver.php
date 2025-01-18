@@ -19,29 +19,26 @@ final class TemplateFilePathResolver
     }
 
     /**
-     * @return string[]
+     * @throws InvalidArgumentException
      */
-    public function resolveExistingFilePaths(Expr $expr, Scope $scope): array
+    public function resolveExistingFilePath(Expr $expr, Scope $scope): ?string
     {
         $resolvedValue = $this->valueResolver->resolve($expr, $scope);
 
         if (! is_string($resolvedValue)) {
-            return [];
+            return null;
         }
 
         $resolvedValue = $this->normalizeName($resolvedValue);
 
         if (file_exists($resolvedValue)) {
-            return [$resolvedValue];
+            return $resolvedValue;
         }
 
-        $view = $this->findView($resolvedValue);
+        /** @throws InvalidArgumentException */
+        $view = $this->fileViewFinder->find($resolvedValue);
 
-        if ($view === null) {
-            return [];
-        }
-
-        return [$view];
+        return $view;
     }
 
     private function normalizeName(string $name): string
@@ -55,14 +52,5 @@ final class TemplateFilePathResolver
         [$namespace, $name] = explode($delimiter, $name);
 
         return str_replace('/', '.', $name);
-    }
-
-    private function findView(string $view): ?string
-    {
-        try {
-            return $this->fileViewFinder->find($view);
-        } catch (InvalidArgumentException) {
-            return null;
-        }
     }
 }

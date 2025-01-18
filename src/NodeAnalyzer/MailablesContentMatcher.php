@@ -6,6 +6,7 @@ namespace Bladestan\NodeAnalyzer;
 
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Mail\Mailables\Content;
+use InvalidArgumentException;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
@@ -20,12 +21,12 @@ final class MailablesContentMatcher
     }
 
     /**
-     * @return RenderTemplateWithParameters[]
+     * @throws InvalidArgumentException
      */
-    public function match(New_ $new, Scope $scope): array
+    public function match(New_ $new, Scope $scope): ?RenderTemplateWithParameters
     {
         if (! $new->class instanceof Name || (string) $new->class !== Content::class) {
-            return [];
+            return null;
         }
 
         $viewName = null;
@@ -40,15 +41,14 @@ final class MailablesContentMatcher
         }
 
         if ($viewName === null) {
-            return [];
+            return null;
         }
 
-        $result = [];
-        $resolvedTemplateFilePaths = $this->templateFilePathResolver->resolveExistingFilePaths($viewName, $scope);
-        foreach ($resolvedTemplateFilePaths as $resolvedTemplateFilePath) {
-            $result[] = new RenderTemplateWithParameters($resolvedTemplateFilePath, $viewWith);
+        $resolvedTemplateFilePath = $this->templateFilePathResolver->resolveExistingFilePath($viewName, $scope);
+        if ($resolvedTemplateFilePath === null) {
+            return null;
         }
 
-        return $result;
+        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $viewWith);
     }
 }

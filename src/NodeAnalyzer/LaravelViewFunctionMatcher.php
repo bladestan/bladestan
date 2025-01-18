@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\View;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\Component;
 use Illuminate\View\ComponentAttributeBag;
+use InvalidArgumentException;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
@@ -30,9 +31,9 @@ final class LaravelViewFunctionMatcher
     }
 
     /**
-     * @return RenderTemplateWithParameters[]
+     * @throws InvalidArgumentException
      */
-    public function match(FuncCall|StaticCall $callLike, Scope $scope): array
+    public function match(FuncCall|StaticCall $callLike, Scope $scope): ?RenderTemplateWithParameters
     {
         // view('', []);
         if ($callLike instanceof FuncCall
@@ -53,24 +54,24 @@ final class LaravelViewFunctionMatcher
             return $this->matchView($callLike, $scope);
         }
 
-        return [];
+        return null;
     }
 
     /**
-     * @return RenderTemplateWithParameters[]
+     * @throws InvalidArgumentException
      */
-    private function matchView(FuncCall|StaticCall $callLike, Scope $scope): array
+    private function matchView(FuncCall|StaticCall $callLike, Scope $scope): ?RenderTemplateWithParameters
     {
         if (count($callLike->getArgs()) < 1) {
-            return [];
+            return null;
         }
 
         $template = $callLike->getArgs()[0]
             ->value;
 
-        $resolvedTemplateFilePaths = $this->templateFilePathResolver->resolveExistingFilePaths($template, $scope);
-        if ($resolvedTemplateFilePaths === []) {
-            return [];
+        $resolvedTemplateFilePath = $this->templateFilePathResolver->resolveExistingFilePath($template, $scope);
+        if ($resolvedTemplateFilePath === null) {
+            return null;
         }
 
         $args = $callLike->getArgs();
@@ -92,11 +93,6 @@ final class LaravelViewFunctionMatcher
             $parametersArray->items[] = new ArrayItem($type, new String_('attributes'));
         }
 
-        $result = [];
-        foreach ($resolvedTemplateFilePaths as $resolvedTemplateFilePath) {
-            $result[] = new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
-        }
-
-        return $result;
+        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
     }
 }

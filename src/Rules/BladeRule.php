@@ -4,11 +4,14 @@ declare(strict_types=1);
 
 namespace Bladestan\Rules;
 
+use Bladestan\ErrorReporting\Blade\TemplateErrorsFactory;
 use Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
 use Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
 use Bladestan\NodeAnalyzer\MailablesContentMatcher;
 use Bladestan\TemplateCompiler\Rules\TemplateRulesRegistry;
+use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Bladestan\ViewRuleHelper;
+use InvalidArgumentException;
 use PhpParser\Node;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Expr\FuncCall;
@@ -16,7 +19,6 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
-use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
 
 /**
@@ -34,7 +36,8 @@ final class BladeRule implements Rule
         private readonly BladeViewMethodsMatcher $bladeViewMethodsMatcher,
         private readonly LaravelViewFunctionMatcher $laravelViewFunctionMatcher,
         private readonly MailablesContentMatcher $mailablesContentMatcher,
-        private readonly ViewRuleHelper $viewRuleHelper
+        private readonly ViewRuleHelper $viewRuleHelper,
+        private readonly TemplateErrorsFactory $templateErrorsFactory,
     ) {
         $this->viewRuleHelper->setRegistry(new TemplateRulesRegistry($rules));
     }
@@ -46,48 +49,29 @@ final class BladeRule implements Rule
 
     public function processNode(Node $node, Scope $scope): array
     {
-        if ($node instanceof StaticCall || $node instanceof FuncCall) {
-            return $this->processLaravelViewFunction($node, $scope);
+        assert($node instanceof CallLike);
+
+        try {
+            $renderTemplatesWithParameter = match (true) {
+                $node instanceof StaticCall,
+                $node instanceof FuncCall => $this->laravelViewFunctionMatcher->match($node, $scope),
+                $node instanceof MethodCall => $this->bladeViewMethodsMatcher->match($node, $scope),
+                $node instanceof New_ => $this->mailablesContentMatcher->match($node, $scope),
+                default => null,
+            };
+        } catch (InvalidArgumentException $invalidArgumentException) {
+            return [$this->templateErrorsFactory->createError(
+                $invalidArgumentException->getMessage(),
+                'bladestan.missing',
+                $node->getLine(),
+                $scope->getFile()
+            )];
         }
 
-        if ($node instanceof MethodCall) {
-            return $this->processBladeView($node, $scope);
+        if (! $renderTemplatesWithParameter instanceof RenderTemplateWithParameters) {
+            return [];
         }
 
-        if ($node instanceof New_) {
-            return $this->processMailablesContent($node, $scope);
-        }
-
-        return [];
-    }
-
-    /**
-     * @return list<IdentifierRuleError>
-     */
-    private function processMailablesContent(New_ $new, Scope $scope): array
-    {
-        $renderTemplatesWithParameters = $this->mailablesContentMatcher->match($new, $scope);
-
-        return $this->viewRuleHelper->processNode($new, $scope, $renderTemplatesWithParameters);
-    }
-
-    /**
-     * @return list<IdentifierRuleError>
-     */
-    private function processLaravelViewFunction(FuncCall|StaticCall $callLike, Scope $scope): array
-    {
-        $renderTemplatesWithParameters = $this->laravelViewFunctionMatcher->match($callLike, $scope);
-
-        return $this->viewRuleHelper->processNode($callLike, $scope, $renderTemplatesWithParameters);
-    }
-
-    /**
-     * @return list<IdentifierRuleError>
-     */
-    private function processBladeView(MethodCall $methodCall, Scope $scope): array
-    {
-        $renderTemplatesWithParameters = $this->bladeViewMethodsMatcher->match($methodCall, $scope);
-
-        return $this->viewRuleHelper->processNode($methodCall, $scope, $renderTemplatesWithParameters);
+        return $this->viewRuleHelper->processNode($node, $scope, $renderTemplatesWithParameter);
     }
 }

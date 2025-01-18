@@ -14,16 +14,24 @@ final class Configuration
     public const TEMPLATE_PATHS = 'template_paths';
 
     /**
+     * @var array{template_paths: array<string>}
+     */
+    private array $parameters = [
+        self::TEMPLATE_PATHS => [],
+    ];
+
+    /**
      * @param array<string, mixed> $parameters
      */
-    public function __construct(
-        private readonly array $parameters
-    ) {
-        Assert::keyExists($this->parameters, self::TEMPLATE_PATHS);
-
-        $templatePaths = $this->parameters[self::TEMPLATE_PATHS];
+    public function __construct(array $parameters)
+    {
+        Assert::keyExists($parameters, self::TEMPLATE_PATHS);
+        $templatePaths = $parameters[self::TEMPLATE_PATHS];
         Assert::isArray($templatePaths);
-        Assert::allString($templatePaths);
+        foreach ($templatePaths as $templatePath) {
+            Assert::true(is_string($templatePath));
+            $this->parameters[self::TEMPLATE_PATHS][] = $templatePath;
+        }
     }
 
     /**
