@@ -27,13 +27,17 @@ final class ViewVariableAnalyzer
 
         $type = $scope->getType($expr);
 
-        $arrayable = new ObjectType(Arrayable::class);
-        if (! $arrayable->isSuperTypeOf($type)->yes()) {
+        $objectType = new ObjectType(Arrayable::class);
+        if (! $objectType->isSuperTypeOf($type)->yes()) {
             return $parametersArray;
         }
 
-        $toArrayMethod = $type->getMethod('toArray', $scope);
-        $type = ParametersAcceptorSelector::selectFromArgs($scope, [], $toArrayMethod->getVariants())->getReturnType();
+        $extendedMethodReflection = $type->getMethod('toArray', $scope);
+        $type = ParametersAcceptorSelector::selectFromArgs(
+            $scope,
+            [],
+            $extendedMethodReflection->getVariants()
+        )->getReturnType();
 
         $constantArrays = $type->getConstantArrays();
 

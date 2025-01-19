@@ -9,6 +9,7 @@ use Nette\Utils\Json;
 use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
+use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -61,6 +62,8 @@ final class ViewFunctionArgumentsNodeVisitor extends NodeVisitorAbstract
             while ($rootViewNode->var instanceof MethodCall) {
                 if ($rootViewNode->name instanceof Identifier) {
                     $methodName = $rootViewNode->name->toString();
+                } elseif ($rootViewNode->name instanceof Variable) {
+                    return null; // Actual function name is only known at runtime
                 } else {
                     // @todo test
                     break;
@@ -72,6 +75,8 @@ final class ViewFunctionArgumentsNodeVisitor extends NodeVisitorAbstract
 
             if ($rootViewNode->name instanceof Identifier) {
                 $methodName = $rootViewNode->name->toString();
+            } elseif ($rootViewNode->name instanceof Variable) {
+                return null; // Actual function name is only known at runtime
             } else {
                 // @todo test
                 throw new ShouldNotHappenException();
