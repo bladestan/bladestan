@@ -18,6 +18,11 @@ rules:
 services:
     errorFormatter.blade:
         class: Bladestan\ErrorReporting\PHPStan\ErrorFormatter\BladeTemplateErrorFormatter
+        arguments:
+            simpleRelativePathHelper: @simpleRelativePathHelper
+            showTipsOfTheDay: %tipsOfTheDay%
+            editorUrl: %editorUrl%
+            editorUrlTitle: %editorUrlTitle%
 
     - PhpParser\PrettyPrinter\Standard
     - PhpParser\ConstExprEvaluator
