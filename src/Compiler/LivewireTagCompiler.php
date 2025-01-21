@@ -147,7 +147,7 @@ class LivewireTagCompiler
                 }
 
                 $paramClass = $paramType->getName();
-                if (class_exists($paramClass)) {
+                if (class_exists($paramClass) || interface_exists($paramClass)) {
                     $mountArgs[$paramName] = "resolve({$paramClass}::class)";
                     continue;
                 }
