@@ -190,7 +190,7 @@ final class BladeToPHPCompiler
                     }
 
                     $paramClass = $paramType->getName();
-                    if (class_exists($paramClass)) {
+                    if (class_exists($paramClass) || interface_exists($paramClass)) {
                         $attributes[$paramName] = "resolve({$paramClass}::class)";
                         continue;
                     }
