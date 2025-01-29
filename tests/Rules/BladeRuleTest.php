@@ -81,6 +81,10 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between string and \'bar\' results in an error.', 13],
         ]];
 
+        yield [__DIR__ . '/Fixture/laravel-view-function-view-not-found.php', [
+            ['View \'non-existing\' can not be found.', 3],
+        ]];
+
         yield [__DIR__ . '/Fixture/view-render-int.php', []];
 
         yield [__DIR__ . '/Fixture/missing-template.php', [['View [missing.view] not found.', 5]]];
