@@ -241,7 +241,7 @@ final class BladeToPHPCompiler
     {
         $stmts = $this->simplePhpParser->parse($phpContent);
 
-        $this->traverseStmtsWithVisitors($stmts, [
+        $stmts = $this->traverseStmtsWithVisitors($stmts, [
             // get rid of $__env variables
             new RemoveEnvVariableNodeVisitor(),
             new AddLoopVarTypeToForeachNodeVisitor(),
