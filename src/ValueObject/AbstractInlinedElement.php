@@ -32,14 +32,6 @@ abstract class AbstractInlinedElement
      */
     protected function buildUse(array $variables): string
     {
-        if ($variables !== []) {
-            $usedVariablesString = implode(
-                ', ',
-                array_map(static fn (string $variable): string => "\${$variable}", $variables)
-            );
-            return " use({$usedVariablesString})";
-        }
-
-        return '';
+        return implode(', ', array_map(static fn (string $variable): string => "\${$variable}", $variables));
     }
 }

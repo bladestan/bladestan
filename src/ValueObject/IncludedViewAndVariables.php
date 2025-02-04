@@ -44,7 +44,7 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
         );
 
         return <<<STRING
-(function (){$use} {
+(function () use({$use}) {
     {$includedViewVariables}
     {$includedContent}
 });

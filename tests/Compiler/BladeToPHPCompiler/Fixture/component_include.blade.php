@@ -4,12 +4,13 @@
 <?php
 
 /** @var Illuminate\View\Factory $__env */
+/** @var Illuminate\Support\ViewErrorBag $errors */
 /** file: foo.blade.php, line: 1 */
-function () use ($a, $b, $x) {
+function () use ($__env, $a, $b, $x) {
     $a = $a;
     $b = $b;
     $c = '' . e($x) . '';
-    function () use ($a, $b, $c) {
+    function () use ($__env, $a, $b, $c) {
         $slot = new \Illuminate\Support\HtmlString();
         $attributes = new \Illuminate\View\ComponentAttributeBag();
         /** file: components/component.blade.php, line: 1 */
@@ -22,11 +23,11 @@ function () use ($a, $b, $x) {
 };
 echo e($inner);
 /** file: foo.blade.php, line: 2 */
-function () use ($a, $b, $x) {
+function () use ($__env, $a, $b, $x) {
     $a = $a;
     $b = $b;
     $c = '' . e($x) . '';
-    function () use ($a, $b, $c) {
+    function () use ($__env, $a, $b, $c) {
         $slot = new \Illuminate\Support\HtmlString();
         $attributes = new \Illuminate\View\ComponentAttributeBag();
         /** file: components/component.blade.php, line: 1 */

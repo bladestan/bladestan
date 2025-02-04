@@ -27,51 +27,6 @@ final class BladeRuleTest extends RuleTestCase
 
     public static function provideData(): Iterator
     {
-        yield [__DIR__ . '/Fixture/view-factory.php', [
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 13],
-            ['Binary operation "+" between string and 10 results in an error.', 13],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 13],
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 16],
-            ['Binary operation "+" between string and 10 results in an error.', 16],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 16],
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 19],
-            ['Binary operation "+" between string and 10 results in an error.', 19],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 19],
-        ]];
-
-        // @todo instead of one huge file with 20 errors, there should be similar errors together, just 2-3 errors per file to make easier debugging and extending
-        yield [__DIR__ . '/Fixture/laravel-view-function.php', [
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
-            ['Binary operation "+" between string and 10 results in an error.', 9],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 9],
-            ['Binary operation "+" between string and 10 results in an error.', 13],
-            // this one is related somehow to "tests/Rules/templates/nested/directory", without it in paths fails; should work without it too
-            ['Binary operation "+" between string and 6 results in an error.', 15],
-            ['Binary operation "+" between string and 10 results in an error.', 19],
-            ['Binary operation "+" between int and \'foo\' results in an error.', 19],
-            ['Binary operation "+" between string and 10 results in an error.', 22],
-            ['Variable $bar might not be defined.', 22],
-            ['Binary operation "+" between string and 10 results in an error.', 24],
-            ['Binary operation "+" between \'10bar\' and 30 results in an error.', 24],
-            ['Binary operation "+" between string and 20 results in an error.', 24],
-            ['Variable $bar might not be defined.', 24],
-            ['Binary operation "+" between string and 10 results in an error.', 28],
-            ['Binary operation "+" between \'10bar\' and 30 results in an error.', 28],
-            ['Undefined variable: $bar', 28],
-            ['Binary operation "+" between string and 10 results in an error.', 33],
-            ['Variable $bar might not be defined.', 33],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 35],
-            ['If condition is always true.', 35],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 35],
-            ['Variable $foos might not be defined.', 43],
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 49],
-            ['Binary operation "+" between string and 10 results in an error.', 49],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 49],
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 51],
-            ['Binary operation "+" between string and 10 results in an error.', 51],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 51],
-        ]];
-
         yield [__DIR__ . '/Fixture/arrayable.php', [
             ['Strict comparison using === between 1 and 1 will always evaluate to true.', 10],
             ['Binary operation "+" between string and 10 results in an error.', 10],
@@ -81,34 +36,36 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between string and \'bar\' results in an error.', 13],
         ]];
 
-        yield [__DIR__ . '/Fixture/view-render-int.php', []];
-
-        yield [__DIR__ . '/Fixture/missing-template.php', [['View [missing.view] not found.', 5]]];
-
-        yield [__DIR__ . '/Fixture/missing-include.php', [['View [missing.view] not found.', 5]]];
-
-        yield [__DIR__ . '/Fixture/missing-component.php', [['View [missing.component] not found.', 5]]];
+        yield [__DIR__ . '/Fixture/compact.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 10],
+            ['Variable $bar might not be defined.', 10],
+        ]];
 
         yield [__DIR__ . '/Fixture/compile-error.php', [
             ['View [compile-error.blade.php] contains syntx errors.', 5],
         ]];
 
-        yield [__DIR__ . '/Fixture/skip-form-errors.php', []];
+        yield [__DIR__ . '/Fixture/empty.php', []];
+        yield [__DIR__ . '/Fixture/once.php', [['Variable $foo might not be defined.', 7]]];
 
-        yield [__DIR__ . '/Fixture/laravel-response-function.php', [
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
+        yield [__DIR__ . '/Fixture/file-with-include.php', [
             ['Binary operation "+" between string and 10 results in an error.', 9],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 9],
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 13],
-            ['Variable $foo might not be defined.', 13],
-            ['Undefined variable: $foo', 13],
+            ['Binary operation "+" between \'10bar\' and 30 results in an error.', 9],
+            ['Binary operation "+" between string and 20 results in an error.', 9],
+            ['Variable $bar might not be defined.', 9],
         ]];
 
-        yield [__DIR__ . '/Fixture/laravel-component-method.php', [
-            ['Binary operation "+" between string and 10 results in an error.', 17],
+        yield [__DIR__ . '/Fixture/file-with-recursive-include.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Binary operation "+" between \'10bar\' and 30 results in an error.', 9],
+            ['Undefined variable: $bar', 9],
         ]];
 
         yield [__DIR__ . '/Fixture/laravel-component-function.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 17],
+        ]];
+
+        yield [__DIR__ . '/Fixture/laravel-component-method.php', [
             ['Binary operation "+" between string and 10 results in an error.', 17],
         ]];
 
@@ -127,9 +84,76 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between string and \'bar\' results in an error.', 16],
         ]];
 
+        yield [__DIR__ . '/Fixture/laravel-response-function.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 9],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 13],
+            ['Variable $foo might not be defined.', 13],
+            ['Undefined variable: $foo', 13],
+        ]];
+
+        yield [__DIR__ . '/Fixture/laravel-view-facade.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 7],
+            ['Binary operation "+" between string and 10 results in an error.', 7],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 7],
+        ]];
+
+        // @todo instead of one huge file with 20 errors, there should be similar errors together, just 2-3 errors per file to make easier debugging and extending
+        yield [__DIR__ . '/Fixture/laravel-view-function.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 9],
+            ['Binary operation "+" between string and 10 results in an error.', 13],
+            ['Binary operation "+" between int and \'foo\' results in an error.', 13],
+            ['Binary operation "+" between string and 10 results in an error.', 16],
+            ['Variable $bar might not be defined.', 16],
+            // @todo test breaks without the previous statments, they should not affect each other
+            ['Binary operation "+" between string and \'bar\' results in an error.', 18],
+            ['If condition is always true.', 18],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 18],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 26],
+            ['Binary operation "+" between string and 10 results in an error.', 26],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 26],
+        ]];
+
         yield [__DIR__ . '/Fixture/laravel-view-include.php', [
             ['Binary operation "+" between string and \'bar\' results in an error.', 9],
         ]];
+
+        yield [__DIR__ . '/Fixture/missing-component.php', [['View [missing.component] not found.', 5]]];
+
+        yield [__DIR__ . '/Fixture/missing-include.php', [['View [missing.view] not found.', 5]]];
+
+        yield [__DIR__ . '/Fixture/missing-template.php', [['View [missing.view] not found.', 5]]];
+
+        yield [__DIR__ . '/Fixture/namespaced-view.php', [
+            ['Binary operation "+" between string and 6 results in an error.', 9],
+        ]];
+
+        yield [__DIR__ . '/Fixture/nested-foreach.php', [['Variable $foos might not be defined.', 7]]];
+
+        yield [__DIR__ . '/Fixture/php-directive-with-comment.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 7],
+        ]];
+
+        yield [__DIR__ . '/Fixture/skip-form-errors.php', []];
+
+        yield [__DIR__ . '/Fixture/static-content.php', []];
+
+        yield [__DIR__ . '/Fixture/view-factory.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 13],
+            ['Binary operation "+" between string and 10 results in an error.', 13],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 13],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 16],
+            ['Binary operation "+" between string and 10 results in an error.', 16],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 16],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 19],
+            ['Binary operation "+" between string and 10 results in an error.', 19],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 19],
+        ]];
+
+        yield [__DIR__ . '/Fixture/view-render-int.php', []];
     }
 
     /**

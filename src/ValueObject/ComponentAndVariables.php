@@ -82,7 +82,7 @@ final class ComponentAndVariables extends AbstractInlinedElement
 
     public function getInnerScopeVariableNames(array $avalibleVariables): array
     {
-        return array_unique(['slot', 'attributes', ...$this->innerUse]);
+        return array_unique(['__env', 'slot', 'attributes', ...$this->innerUse]);
     }
 
     public function generateInlineRepresentation(string $includedContent): string
@@ -94,8 +94,8 @@ final class ComponentAndVariables extends AbstractInlinedElement
             $includeVariables = [...$includeVariables, ...$variableNames[1]];
         }
 
-        $outerUse = $this->buildUse($includeVariables);
-        $innerUse = $this->buildUse($this->innerUse);
+        $outerUse = $this->buildUse(['__env', ...$includeVariables]);
+        $innerUse = $this->buildUse(['__env', ...$this->innerUse]);
 
         $variables = $this->variablesAndValues;
         foreach ($this->defaults as $key => $default) {
@@ -114,9 +114,9 @@ final class ComponentAndVariables extends AbstractInlinedElement
         );
 
         return <<<STRING
-(function (){$outerUse} {
+(function () use({$outerUse}) {
     {$includedViewVariables}
-    (function (){$innerUse} {
+    (function () use({$innerUse}) {
         \$slot = new \Illuminate\Support\HtmlString();
         \$attributes = new \Illuminate\View\ComponentAttributeBag();
         {$includedContent}

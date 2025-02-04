@@ -8,7 +8,6 @@ use Bladestan\Blade\PhpLineToTemplateLineResolver;
 use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
-use Bladestan\PhpParser\NodeVisitor\RemoveEnvVariableNodeVisitor;
 use Bladestan\PhpParser\SimplePhpParser;
 use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
@@ -18,6 +17,7 @@ use Bladestan\ValueObject\IncludedViewAndVariables;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Filesystem\Filesystem;
+use Illuminate\Support\ViewErrorBag;
 use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
 use Illuminate\View\DynamicComponent;
@@ -222,6 +222,7 @@ final class BladeToPHPCompiler
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
         $variablesAndTypes[] = new VariableAndType('__env', new ObjectType(ViewFactory::class));
+        $variablesAndTypes[] = new VariableAndType('errors', new ObjectType(ViewErrorBag::class));
 
         $allVariablesList = array_map(
             static fn (VariableAndType $variableAndType): string => $variableAndType->variable,
@@ -244,11 +245,7 @@ final class BladeToPHPCompiler
     {
         $stmts = $this->simplePhpParser->parse($phpContent);
 
-        $stmts = $this->traverseStmtsWithVisitors($stmts, [
-            // get rid of $__env variables
-            new RemoveEnvVariableNodeVisitor(),
-            new AddLoopVarTypeToForeachNodeVisitor(),
-        ]);
+        $stmts = $this->traverseStmtsWithVisitors($stmts, [new AddLoopVarTypeToForeachNodeVisitor()]);
 
         // Add @var docs to top of file
         $docNodes = $this->varDocNodeFactory->createDocNodes($variablesAndTypes);
