@@ -21,6 +21,7 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
 use Illuminate\View\DynamicComponent;
+use Illuminate\View\Factory as ViewFactory;
 use Illuminate\View\FileViewFinder;
 use InvalidArgumentException;
 use PhpParser\Error as ParserError;
@@ -29,6 +30,7 @@ use PhpParser\Node\Stmt;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
+use PHPStan\Type\ObjectType;
 use ReflectionClass;
 use ReflectionNamedType;
 
@@ -219,6 +221,7 @@ final class BladeToPHPCompiler
         array $variablesAndTypes
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
+        $variablesAndTypes[] = new VariableAndType('__env', new ObjectType(ViewFactory::class));
 
         $allVariablesList = array_map(
             static fn (VariableAndType $variableAndType): string => $variableAndType->variable,

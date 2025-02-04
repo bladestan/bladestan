@@ -3,6 +3,7 @@
 -----
 <?php
 
+/** @var Illuminate\View\Factory $__env */
 /** file: foo.blade.php, line: 1 */
 $component = new App\View\Components\BackedComponent(b: $b);
 echo e($inner);

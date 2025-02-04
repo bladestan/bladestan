@@ -3,11 +3,12 @@
 -----
 <?php
 
+/** @var Illuminate\View\Factory $__env */
 /** file: foo.blade.php, line: 1 */
-function () {
+function () use ($__env) {
     $vehicle = 'truck';
 };
 /** file: foo.blade.php, line: 2 */
-function () {
+function () use ($__env) {
     $animal = 'frogs';
 };

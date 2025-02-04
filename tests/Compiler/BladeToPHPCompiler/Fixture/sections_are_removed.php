@@ -3,4 +3,4 @@
 -----
 <?php
 
-
+/** @var Illuminate\View\Factory $__env */

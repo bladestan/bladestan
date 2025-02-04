@@ -3,6 +3,7 @@
 -----
 <?php
 
+/** @var Illuminate\View\Factory $__env */
 /** file: foo.blade.php, line: 1 */
 function () use ($a, $b, $x) {
     $a = $a;

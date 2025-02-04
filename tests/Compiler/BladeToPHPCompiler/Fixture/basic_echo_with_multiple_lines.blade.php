@@ -4,5 +4,6 @@
 -----
 <?php
 
+/** @var Illuminate\View\Factory $__env */
 /** file: foo.blade.php, line: 2 */
 echo e($foo);
