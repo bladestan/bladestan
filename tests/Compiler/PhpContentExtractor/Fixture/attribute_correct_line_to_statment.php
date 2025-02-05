@@ -4,4 +4,7 @@
 </div>
 -----
 <?php
-/** file: foo.blade.php, line: 3 */ echo e($foo);
+
+/** file: foo.blade.php, line: 3 */
+echo e($foo);
+/** file: foo.blade.php, line: 4 */

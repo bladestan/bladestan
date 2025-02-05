@@ -18,7 +18,6 @@ echo e($foo);
 /** file: foo.blade.php, line: 3 */
 /** file: foo.blade.php, line: 4 */
 echo '';
-/** file: foo.blade.php, line: 5 */
 /** file: foo.blade.php, line: 6 */
 if ($foo) {
     /** file: foo.blade.php, line: 7 */

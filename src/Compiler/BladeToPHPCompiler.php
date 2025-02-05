@@ -8,6 +8,7 @@ use Bladestan\Blade\PhpLineToTemplateLineResolver;
 use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
+use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
 use Bladestan\PhpParser\SimplePhpParser;
 use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
@@ -46,7 +47,7 @@ final class BladeToPHPCompiler
      * @see https://regex101.com/r/Fo7sHW/1
      * @var string
      */
-    private const COMPONENT_REGEX = '/if \(isset\(\$component\)\).+? \$component = (.*?)::resolve\(.+?\$component->withAttributes\(\[.*?\]\);/s';
+    private const COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\(.+?\$component->withAttributes\(\[.*?\]\);/s';
 
     /**
      * @see https://regex101.com/r/XGSsgA/1
@@ -64,7 +65,7 @@ final class BladeToPHPCompiler
      * @see https://regex101.com/r/mt3PUM/1
      * @var string
      */
-    private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?endif;/s';
+    private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
 
     /**
      * @var list<array{0: string, 1: string}>
@@ -78,7 +79,6 @@ final class BladeToPHPCompiler
         private readonly VarDocNodeFactory $varDocNodeFactory,
         private readonly FileViewFinder $fileViewFinder,
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
-        private readonly PhpContentExtractor $phpContentExtractor,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
         private readonly SimplePhpParser $simplePhpParser,
@@ -109,8 +109,13 @@ final class BladeToPHPCompiler
             /** @throws InvalidArgumentException */
             $compiledBlade = $this->bladeCompiler->compileString($fileContents);
             /** @throws ParserError */
-            $this->simplePhpParser->parse($compiledBlade);
-            $rawPhpContent = $this->phpContentExtractor->extract($compiledBlade, $addPHPOpeningTag);
+            $stmts = $this->simplePhpParser->parse($compiledBlade);
+            $stmts = $this->traverseStmtsWithVisitors($stmts, [new DeleteInlineHTML()]);
+            if ($addPHPOpeningTag) {
+                $rawPhpContent = $this->printerStandard->prettyPrintFile($stmts) . "\n";
+            } else {
+                $rawPhpContent = $this->printerStandard->prettyPrint($stmts) . "\n";
+            }
         } catch (ParserError) {
             $filePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
             $this->errors[] = ["View [{$filePath}] contains syntx errors.", 'bladestan.parsing'];

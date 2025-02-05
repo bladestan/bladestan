@@ -3,4 +3,8 @@
 </div>
 -----
 <?php
-/** file: foo.blade.php, line: 2 */ echo e($foo); echo e($bar);
+
+/** file: foo.blade.php, line: 2 */
+echo e($foo);
+echo e($bar);
+/** file: foo.blade.php, line: 3 */

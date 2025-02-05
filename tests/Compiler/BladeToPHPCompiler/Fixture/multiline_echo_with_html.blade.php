@@ -13,3 +13,4 @@ echo e(
     /** file: foo.blade.php, line: 3 */
     $foo
 );
+/** file: foo.blade.php, line: 5 */

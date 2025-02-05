@@ -52,7 +52,6 @@ services:
     - Bladestan\NodeAnalyzer\ValueResolver
 
     - Bladestan\Compiler\BladeToPHPCompiler
-    - Bladestan\Compiler\PhpContentExtractor
     - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
     - Bladestan\PhpParser\ArrayStringToArrayConverter
     - Bladestan\Support\DirectoryHelper
