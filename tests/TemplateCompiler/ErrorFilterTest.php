@@ -14,7 +14,7 @@ final class ErrorFilterTest extends TestCase
     {
         $errorFilter = new ErrorFilter();
         /** @phpstan-ignore phpstanApi.constructor */
-        $ruleError = new Error('Variable $__env might not be defined', 'some_file.php');
+        $ruleError = new Error('Anonymous function has an unused use $foo.', 'some_file.php');
 
         $filteredErrors = $errorFilter->filterErrors([$ruleError]);
         $this->assertEmpty($filteredErrors);

@@ -15,14 +15,12 @@ final class ErrorFilter
      * @var string[]
      */
     private const ERRORS_TO_IGNORE_REGEXES = [
+        // Inlined templates gets all variables forwarded since we don't check what they use beforehand
         '#Anonymous function has an unused use (.*?)#',
-        '#Variable \$__env might not be defined#',
         // e() function for render can accept more values than strings
         '#Parameter \#1 \$value of function e expects BackedEnum\|Illuminate(.*?)\|string\|null, (int|float) given#',
         // forms errors, given optionally
-        '#Variable \$errors might not be defined#',
         '#Offset 1 on array{\'(.*?)\'} on left side of \?\? does not exist#',
-        '#Undefined variable\: \$errors#',
     ];
 
     /**
