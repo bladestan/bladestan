@@ -9,6 +9,7 @@ use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
+use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\SimplePhpParser;
 use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
@@ -110,7 +111,11 @@ final class BladeToPHPCompiler
             $compiledBlade = $this->bladeCompiler->compileString($fileContents);
             /** @throws ParserError */
             $stmts = $this->simplePhpParser->parse($compiledBlade);
-            $stmts = $this->traverseStmtsWithVisitors($stmts, [new DeleteInlineHTML()]);
+            $stmts = $this->traverseStmtsWithVisitors($stmts, [
+                new DeleteInlineHTML(),
+                new AddLoopVarTypeToForeachNodeVisitor(),
+                new TransformEach(),
+            ]);
             if ($addPHPOpeningTag) {
                 $rawPhpContent = $this->printerStandard->prettyPrintFile($stmts) . "\n";
             } else {
@@ -249,8 +254,6 @@ final class BladeToPHPCompiler
     private function decoratePhpContent(string $phpContent, array $variablesAndTypes): string
     {
         $stmts = $this->simplePhpParser->parse($phpContent);
-
-        $stmts = $this->traverseStmtsWithVisitors($stmts, [new AddLoopVarTypeToForeachNodeVisitor()]);
 
         // Add @var docs to top of file
         $docNodes = $this->varDocNodeFactory->createDocNodes($variablesAndTypes);
