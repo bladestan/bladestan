@@ -17,20 +17,32 @@ final class FileViewFinderFactory
     public function __construct(
         private readonly Filesystem $filesystem,
         private readonly Configuration $configuration,
+        // @note is the absolute path needed?
         private readonly DirectoryHelper $directoryHelper,
     ) {
     }
 
     public function create(): FileViewFinder
     {
-        // @note is the absolute path needed?
-        $absoluteTemplatePaths = $this->directoryHelper->absolutizePaths($this->configuration->getTemplatePaths());
+        $basePaths = [];
+        $namespacedPaths = [];
 
-        return new FileViewFinder(
-            $this->filesystem,
-            $absoluteTemplatePaths,
-            // @note why SVG?
-            ['blade.php', 'svg']
-        );
+        $paths = $this->configuration->getTemplatePaths();
+        foreach ($paths as $path) {
+            if (str_contains($path, ':')) {
+                $components = explode(':', $path);
+                $namespacedPaths[$components[0]][] = $components[1];
+            } else {
+                $basePaths[] = $path;
+            }
+        }
+
+        $fileViewFinder = new FileViewFinder($this->filesystem, $this->directoryHelper->absolutizePaths($basePaths));
+
+        foreach ($namespacedPaths as $namespace => $paths) {
+            $fileViewFinder->addNamespace($namespace, $this->directoryHelper->absolutizePaths($paths));
+        }
+
+        return $fileViewFinder;
     }
 }

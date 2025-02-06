@@ -18,6 +18,7 @@ parameters:
         template_paths:
             # default
             - resources/views
+            - mailbook:vendor/xammie/mailbook/resources/views
 ```
 <br>
 
