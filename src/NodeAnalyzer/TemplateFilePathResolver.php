@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Illuminate\View\FileViewFinder;
+use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\View\ViewFinderInterface;
 use InvalidArgumentException;
 use PhpParser\Node\Expr;
@@ -13,7 +13,7 @@ use PHPStan\Analyser\Scope;
 final class TemplateFilePathResolver
 {
     public function __construct(
-        private readonly FileViewFinder $fileViewFinder,
+        private readonly ViewFactory $viewFactory,
         private readonly ValueResolver $valueResolver,
     ) {
     }
@@ -36,7 +36,8 @@ final class TemplateFilePathResolver
         }
 
         /** @throws InvalidArgumentException */
-        $view = $this->fileViewFinder->find($resolvedValue);
+        $view = $this->viewFactory->getFinder()
+            ->find($resolvedValue);
 
         return $view;
     }

@@ -6,6 +6,8 @@ parameters:
         template_paths:
             # default to typical Laravel directory
             - resources/views
+    bootstrapFiles:
+        - ../bootstrap.php
 
 parametersSchema:
     bladestan: structure([
@@ -35,7 +37,7 @@ services:
 
     - Bladestan\Laravel\View\FileViewFinderFactory
     -
-        class: Illuminate\View\FileViewFinder
+        class: Illuminate\Contracts\View\Factory
         factory: ['@Bladestan\Laravel\View\FileViewFinderFactory', 'create']
 
     - Bladestan\ViewRuleHelper

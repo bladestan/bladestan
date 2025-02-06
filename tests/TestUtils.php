@@ -23,7 +23,7 @@ final class TestUtils
             ->split("#-----\n#")
             ->values();
 
-        return [$stringsCollection[0], $stringsCollection[1]];
+        return [$stringsCollection[0] ?? '', $stringsCollection[1] ?? ''];
     }
 
     public static function yieldDirectory(string $directory): Iterator

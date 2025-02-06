@@ -50,6 +50,7 @@ class LivewireTagCompiler
             $attributes = $this->getAttributesFromAttributeString($matches['attributes']);
 
             // Convert all kebab-cased to camelCase.
+            /** @var array<string, mixed> */
             $attributes = collect($attributes)
                 ->mapWithKeys(function (mixed $value, string|int $key): array {
                     // Skip snake_cased attributes.
@@ -85,6 +86,7 @@ class LivewireTagCompiler
                 ->toArray();
 
             // Filter out attribute-only values
+            /** @var array<string, mixed> */
             $attributes = array_filter($attributes, function (string $key): bool {
                 return preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
             }, ARRAY_FILTER_USE_KEY);

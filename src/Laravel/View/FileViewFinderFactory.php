@@ -6,8 +6,8 @@ namespace Bladestan\Laravel\View;
 
 use Bladestan\Configuration\Configuration;
 use Bladestan\Support\DirectoryHelper;
-use Illuminate\Filesystem\Filesystem;
-use Illuminate\View\FileViewFinder;
+use Illuminate\Contracts\Container\BindingResolutionException;
+use Illuminate\Contracts\View\Factory;
 
 /**
  * @api factory service in config
@@ -15,14 +15,16 @@ use Illuminate\View\FileViewFinder;
 final class FileViewFinderFactory
 {
     public function __construct(
-        private readonly Filesystem $filesystem,
         private readonly Configuration $configuration,
         // @note is the absolute path needed?
         private readonly DirectoryHelper $directoryHelper,
     ) {
     }
 
-    public function create(): FileViewFinder
+    /**
+     * @throws BindingResolutionException
+     */
+    public function create(): Factory
     {
         $basePaths = [];
         $namespacedPaths = [];
@@ -37,7 +39,12 @@ final class FileViewFinderFactory
             }
         }
 
-        $fileViewFinder = new FileViewFinder($this->filesystem, $this->directoryHelper->absolutizePaths($basePaths));
+        $fileViewFinder = app()
+            ->make(Factory::class);
+
+        foreach ($this->directoryHelper->absolutizePaths($basePaths) as $path) {
+            $fileViewFinder->addLocation($path);
+        }
 
         foreach ($namespacedPaths as $namespace => $paths) {
             $fileViewFinder->addNamespace($namespace, $this->directoryHelper->absolutizePaths($paths));

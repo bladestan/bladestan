@@ -18,13 +18,13 @@ use Bladestan\ValueObject\ComponentAndVariables;
 use Bladestan\ValueObject\IncludedViewAndVariables;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
+use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\ViewErrorBag;
 use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
 use Illuminate\View\DynamicComponent;
-use Illuminate\View\Factory as ViewFactory;
-use Illuminate\View\FileViewFinder;
+use Illuminate\View\Factory as EnvView;
 use InvalidArgumentException;
 use PhpParser\Error as ParserError;
 use PhpParser\Node;
@@ -78,7 +78,7 @@ final class BladeToPHPCompiler
         private readonly BladeCompiler $bladeCompiler,
         private readonly Standard $printerStandard,
         private readonly VarDocNodeFactory $varDocNodeFactory,
-        private readonly FileViewFinder $fileViewFinder,
+        private readonly ViewFactory $viewFactory,
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
@@ -132,7 +132,8 @@ final class BladeToPHPCompiler
         foreach ($this->getIncludes($rawPhpContent) as $inlinedElement) {
             try {
                 /** @throws InvalidArgumentException */
-                $includedFilePath = $this->fileViewFinder->find($inlinedElement->includedViewName);
+                $includedFilePath = $this->viewFactory->getFinder()
+                    ->find($inlinedElement->includedViewName);
                 $includedContent = $this->fileSystem->get($includedFilePath);
             } catch (InvalidArgumentException|FileNotFoundException $exception) {
                 $includedFilePath = '';
@@ -231,7 +232,7 @@ final class BladeToPHPCompiler
         array $variablesAndTypes
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
-        $variablesAndTypes[] = new VariableAndType('__env', new ObjectType(ViewFactory::class));
+        $variablesAndTypes[] = new VariableAndType('__env', new ObjectType(EnvView::class));
         $variablesAndTypes[] = new VariableAndType('errors', new ObjectType(ViewErrorBag::class));
 
         $allVariablesList = array_map(
