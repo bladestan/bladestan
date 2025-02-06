@@ -6,6 +6,4 @@ namespace LaravelViewFunction;
 
 use function view;
 
-view('foo', [
-    'foo' => 'bar',
-]);
+view('simple_variable')->with('foo', 'bar');

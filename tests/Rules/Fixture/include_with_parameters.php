@@ -6,6 +6,6 @@ namespace LaravelViewFunction;
 
 use function view;
 
-view('foo', [
-    'foo' => 'bar',
+view('include_with_parameters', [
+    'includeData' => [],
 ]);

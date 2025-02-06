@@ -99,23 +99,26 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between string and \'bar\' results in an error.', 7],
         ]];
 
-        // @todo instead of one huge file with 20 errors, there should be similar errors together, just 2-3 errors per file to make easier debugging and extending
         yield [__DIR__ . '/Fixture/laravel-view-function.php', [
             ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
             ['Binary operation "+" between string and 10 results in an error.', 9],
             ['Binary operation "+" between string and \'bar\' results in an error.', 9],
-            ['Binary operation "+" between string and 10 results in an error.', 13],
-            ['Binary operation "+" between int and \'foo\' results in an error.', 13],
-            ['Binary operation "+" between string and 10 results in an error.', 16],
-            ['Variable $bar might not be defined.', 16],
-            // @todo test breaks without the previous statments, they should not affect each other
-            ['Variable $includeData might not be defined.', 18],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 18],
-            ['If condition is always true.', 18],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 18],
-            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 26],
-            ['Binary operation "+" between string and 10 results in an error.', 26],
-            ['Binary operation "+" between string and \'bar\' results in an error.', 26],
+        ]];
+
+        yield [__DIR__ . '/Fixture/include_with_parameters.php', [
+            ['Variable $foo might not be defined.', 9],
+            ['If condition is always true.', 9],
+            ['Undefined variable: $foo', 9],
+        ]];
+
+        yield [__DIR__ . '/Fixture/data-from-with.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Variable $bar might not be defined.', 9],
+        ]];
+
+        yield [__DIR__ . '/Fixture/data-from-with-magic.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Binary operation "+" between int and \'foo\' results in an error.', 9],
         ]];
 
         yield [__DIR__ . '/Fixture/laravel-view-include.php', [
