@@ -12,7 +12,7 @@ use PHPStan\Analyser\Scope;
 final class TemplateVariableTypesResolver
 {
     /**
-     * @return VariableAndType[]
+     * @return list<VariableAndType>
      */
     public function resolveArray(Array_ $array, Scope $scope): array
     {

@@ -155,13 +155,19 @@ final class BladeRuleTest extends RuleTestCase
             ['Strict comparison using === between 1 and 1 will always evaluate to true.', 19],
             ['Binary operation "+" between string and 10 results in an error.', 19],
             ['Binary operation "+" between string and \'bar\' results in an error.', 19],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 20],
+            ['Binary operation "+" between string and 10 results in an error.', 20],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 20],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 23],
+            ['Binary operation "+" between string and 10 results in an error.', 23],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 23],
         ]];
 
         yield [__DIR__ . '/Fixture/view-render-int.php', []];
     }
 
     /**
-     * @return string[]
+     * @return list<string>
      */
     public static function getAdditionalConfigFiles(): array
     {

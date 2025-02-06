@@ -66,7 +66,7 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
             return 0;
         }
 
-        /** @var array<string, Error[]> $fileErrors */
+        /** @var array<string, list<Error>> $fileErrors */
         $fileErrors = [];
         foreach ($analysisResult->getFileSpecificErrors() as $fileSpecificError) {
             if (! isset($fileErrors[$fileSpecificError->getFile()])) {

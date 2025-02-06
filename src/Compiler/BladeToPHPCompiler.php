@@ -129,11 +129,11 @@ final class BladeToPHPCompiler
         }
 
         // Recursively fetch and compile includes
-        foreach ($this->getIncludes($rawPhpContent) as $inlinedElement) {
+        foreach ($this->getIncludes($rawPhpContent) as $include) {
             try {
                 /** @throws InvalidArgumentException */
                 $includedFilePath = $this->viewFactory->getFinder()
-                    ->find($inlinedElement->includedViewName);
+                    ->find($include->includedViewName);
                 $includedContent = $this->fileSystem->get($includedFilePath);
             } catch (InvalidArgumentException|FileNotFoundException $exception) {
                 $includedFilePath = '';
@@ -141,17 +141,17 @@ final class BladeToPHPCompiler
                 $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
             }
 
-            $includedContent = $inlinedElement->preprocessTemplate($includedContent);
+            $includedContent = $include->preprocessTemplate($includedContent);
             $includedContent = $this->inlineInclude(
                 $includedFilePath,
                 $includedContent,
-                $inlinedElement->getInnerScopeVariableNames($allVariablesList),
+                $include->getInnerScopeVariableNames($allVariablesList),
                 false
             );
 
             $rawPhpContent = str_replace(
-                $inlinedElement->rawPhpContent,
-                $inlinedElement->generateInlineRepresentation($includedContent),
+                $include->rawPhpContent,
+                $include->generateInlineRepresentation($includedContent),
                 $rawPhpContent
             );
         }
@@ -279,7 +279,7 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * @return AbstractInlinedElement[]
+     * @return list<AbstractInlinedElement>
      */
     private function getIncludes(string $compiled): array
     {

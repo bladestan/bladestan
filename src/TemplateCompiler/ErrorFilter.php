@@ -12,7 +12,7 @@ use PHPStan\Analyser\Error;
 final class ErrorFilter
 {
     /**
-     * @var string[]
+     * @var list<string>
      */
     private const ERRORS_TO_IGNORE_REGEXES = [
         // Inlined templates gets all variables forwarded since we don't check what they use beforehand

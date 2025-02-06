@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
+use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Mail\Mailables\Content;
 use InvalidArgumentException;
@@ -17,6 +18,7 @@ final class MailablesContentMatcher
     public function __construct(
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
+        private readonly TemplateVariableTypesResolver $templateVariableTypesResolver,
     ) {
     }
 
@@ -30,13 +32,13 @@ final class MailablesContentMatcher
         }
 
         $viewName = null;
-        $viewWith = new Array_();
+        $parametersArray = new Array_();
         foreach ($new->getArgs() as $argument) {
             $argName = (string) $argument->name;
             if ($argName === 'view') {
                 $viewName = $argument->value;
             } elseif ($argName === 'with') {
-                $viewWith = $this->viewDataParametersAnalyzer->resolveParametersArray($argument, $scope);
+                $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($argument, $scope);
             }
         }
 
@@ -49,6 +51,8 @@ final class MailablesContentMatcher
             return null;
         }
 
-        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $viewWith);
+        $parametersArray = $this->templateVariableTypesResolver->resolveArray($parametersArray, $scope);
+
+        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
     }
 }

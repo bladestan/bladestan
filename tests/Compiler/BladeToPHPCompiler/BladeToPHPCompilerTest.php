@@ -45,7 +45,7 @@ final class BladeToPHPCompilerTest extends PHPStanTestCase
     }
 
     /**
-     * @return string[]
+     * @return list<string>
      */
     public static function getAdditionalConfigFiles(): array
     {

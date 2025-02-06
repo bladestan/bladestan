@@ -8,9 +8,7 @@ use Bladestan\Compiler\BladeToPHPCompiler;
 use Bladestan\ErrorReporting\Blade\TemplateErrorsFactory;
 use Bladestan\TemplateCompiler\ErrorFilter;
 use Bladestan\TemplateCompiler\PHPStan\FileAnalyserProvider;
-use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
-use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Bladestan\ValueObject\CompiledTemplate;
 use PhpParser\Node\Expr\CallLike;
 use PHPStan\Analyser\Scope;
@@ -22,7 +20,6 @@ final class ViewRuleHelper
     private Registry $registry;
 
     public function __construct(
-        private readonly TemplateVariableTypesResolver $templateVariableTypesResolver,
         private readonly FileAnalyserProvider $fileAnalyserProvider,
         private readonly TemplateErrorsFactory $templateErrorsFactory,
         private readonly BladeToPHPCompiler $bladeToPhpCompiler,
@@ -38,14 +35,8 @@ final class ViewRuleHelper
         Scope $scope,
         RenderTemplateWithParameters $renderTemplateWithParameters
     ): array {
-        $variablesAndTypes = $this->templateVariableTypesResolver->resolveArray(
-            $renderTemplateWithParameters->parametersArray,
-            $scope
-        );
-
         $compiledTemplate = $this->compileToPhp(
-            $renderTemplateWithParameters->templateFilePath,
-            $variablesAndTypes,
+            $renderTemplateWithParameters,
             $scope->getFile(),
             $callLike->getLine()
         );
@@ -94,24 +85,20 @@ final class ViewRuleHelper
         );
     }
 
-    /**
-     * @param VariableAndType[] $variablesAndTypes
-     */
     private function compileToPhp(
-        string $templateFilePath,
-        array $variablesAndTypes,
+        RenderTemplateWithParameters $renderTemplateWithParameters,
         string $filePath,
         int $phpLine
     ): ?CompiledTemplate {
-        $fileContents = file_get_contents($templateFilePath);
+        $fileContents = file_get_contents($renderTemplateWithParameters->templateFilePath);
         if ($fileContents === false) {
             return null;
         }
 
         $phpFileContentsWithLineMap = $this->bladeToPhpCompiler->compileContent(
-            $templateFilePath,
+            $renderTemplateWithParameters->templateFilePath,
             $fileContents,
-            $variablesAndTypes
+            $renderTemplateWithParameters->parametersArray
         );
 
         $phpFileContents = $phpFileContentsWithLineMap->phpFileContents;

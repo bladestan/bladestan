@@ -14,7 +14,7 @@ final class Configuration
     public const TEMPLATE_PATHS = 'template_paths';
 
     /**
-     * @var array{template_paths: array<string>}
+     * @var array{template_paths: list<string>}
      */
     private array $parameters = [
         self::TEMPLATE_PATHS => [],
@@ -35,7 +35,7 @@ final class Configuration
     }
 
     /**
-     * @return string[]
+     * @return list<string>
      */
     public function getTemplatePaths(): array
     {

@@ -14,7 +14,7 @@ use PHPStan\Rules\Rule;
 final class TemplateRulesRegistry implements Registry
 {
     /**
-     * @var string[]
+     * @var list<string>
      */
     private const EXCLUDED_RULES = [
         'Symplify\PHPStanRules\Rules\ForbiddenFuncCallRule',

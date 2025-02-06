@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
+use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Contracts\View\Factory as ViewFactoryContract;
 use Illuminate\Http\Response;
@@ -13,41 +15,42 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\Component;
 use Illuminate\View\ComponentAttributeBag;
-use Illuminate\View\Factory;
+use Illuminate\View\Factory as ViewFactory;
 use InvalidArgumentException;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Identifier;
-use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
+use PHPStan\Type\MixedType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\UnionType;
 
 final class BladeViewMethodsMatcher
 {
-    /**
-     * @var string
-     */
-    public const VIEW = 'view';
+    private const string VIEW = 'view';
+
+    private const string MAKE = 'make';
+
+    private const string FIRST = 'first';
+
+    private const string EACH = 'renderEach';
+
+    private const string WHEN = 'renderWhen';
+
+    private const string UNLESS = 'renderUnless';
 
     /**
-     * @var string
+     * @var list<string>
      */
-    private const MAKE = 'make';
-
-    /**
-     * @var string[]
-     */
-    private const VIEW_FACTORY_METHOD_NAMES = ['make', 'renderWhen', 'renderUnless'];
+    private const VIEW_FACTORY_METHOD_NAMES = [self::MAKE, self::WHEN, self::UNLESS, self::FIRST, self::EACH];
 
     public function __construct(
         private readonly TemplateFilePathResolver $templateFilePathResolver,
-        private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer
+        private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
+        private readonly TemplateVariableTypesResolver $templateVariableTypesResolver,
     ) {
     }
 
@@ -79,19 +82,21 @@ final class BladeViewMethodsMatcher
             return null;
         }
 
-        $arg = $this->findTemplateDataArgument($methodName, $methodCall);
-
-        if (! $arg instanceof Arg) {
-            $parametersArray = new Array_();
+        if ($methodName === self::EACH) {
+            $parametersArray = $this->getEachVariables($methodCall, $scope);
         } else {
-            $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
+            $parametersArray = [];
+
+            $arg = $this->findTemplateDataArgument($methodName, $methodCall);
+            if ($arg instanceof Arg) {
+                $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
+                $parametersArray = $this->templateVariableTypesResolver->resolveArray($parametersArray, $scope);
+            }
         }
 
         if ((new ObjectType(Component::class))->isSuperTypeOf($calledOnType)->yes()) {
-            $type = new New_(new FullyQualified(HtmlString::class));
-            $parametersArray->items[] = new ArrayItem($type, new String_('slot'));
-            $type = new New_(new FullyQualified(ComponentAttributeBag::class));
-            $parametersArray->items[] = new ArrayItem($type, new String_('attributes'));
+            $parametersArray[] = new VariableAndType('attributes', new ObjectType(ComponentAttributeBag::class));
+            $parametersArray[] = new VariableAndType('slot', new ObjectType(HtmlString::class));
         }
 
         return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
@@ -120,7 +125,7 @@ final class BladeViewMethodsMatcher
 
     private function isCalledOnTypeABladeView(Type $objectType, string $methodName): bool
     {
-        if ((new ObjectType(Factory::class))->isSuperTypeOf($objectType)->yes()) {
+        if ((new ObjectType(ViewFactory::class))->isSuperTypeOf($objectType)->yes()) {
             return in_array($methodName, self::VIEW_FACTORY_METHOD_NAMES, true);
         }
 
@@ -135,6 +140,38 @@ final class BladeViewMethodsMatcher
         return false;
     }
 
+    /**
+     * @return list<VariableAndType>
+     */
+    private function getEachVariables(MethodCall $methodCall, Scope $scope): array
+    {
+        $values = [];
+
+        $args = $methodCall->getArgs();
+
+        $valueName = null;
+        if ($args[2]->value instanceof String_) {
+            $valueName = $args[2]->value->value;
+        }
+
+        $type = $scope->getType($args[1]->value);
+        $constArray = $type->getConstantArrays() ?: $type->getArrays();
+        if (count($constArray) === 1) {
+            $constArray = $constArray[0];
+            $values[] = new VariableAndType('key', $constArray->getKeyType());
+            if ($valueName) {
+                $values[] = new VariableAndType($valueName, $constArray->getItemType());
+            }
+        } else {
+            $values[] = new VariableAndType('key', new MixedType());
+            if ($valueName) {
+                $values[] = new VariableAndType($valueName, new MixedType());
+            }
+        }
+
+        return $values;
+    }
+
     private function findTemplateNameArg(string $methodName, MethodCall $methodCall): ?Arg
     {
         $args = $methodCall->getArgs();
@@ -143,18 +180,25 @@ final class BladeViewMethodsMatcher
             return null;
         }
 
-        // Those methods take the view name as the first argument
-        if ($methodName === self::MAKE || $methodName === self::VIEW) {
+        if ($methodName === self::VIEW || $methodName === self::MAKE || $methodName === self::EACH) {
             return $args[0];
         }
 
-        // Here it can just be `renderWhen` or `renderUnless`
-        if (count($args) < 2) {
-            return null;
+        if ($methodName === self::FIRST && $args[0]->value instanceof Array_) {
+            // The last template is likely the safe fallback so use that so we don't complain about the optionals
+            $last = end($args[0]->value->items);
+            if (! $last) {
+                return null;
+            }
+
+            return new Arg($last->value);
         }
 
-        // Second argument is the template name
-        return $args[1];
+        if ($methodName === self::WHEN || $methodName === self::UNLESS) {
+            return $args[1];
+        }
+
+        return null;
     }
 
     private function findTemplateDataArgument(string $methodName, MethodCall $methodCall): ?Arg
@@ -165,21 +209,14 @@ final class BladeViewMethodsMatcher
             return null;
         }
 
-        if ($methodName === self::VIEW) {
+        if ($methodName === self::VIEW || $methodName === self::MAKE || $methodName === self::FIRST) {
             return $args[1];
         }
 
-        // `make` just takes view name and data as arguments
-        if ($methodName === self::MAKE) {
-            return $args[1];
+        if ($methodName === self::WHEN || $methodName === self::UNLESS) {
+            return $args[2];
         }
 
-        // Here it can just be `renderWhen` or `renderUnless`
-        if (count($args) < 3) {
-            return null;
-        }
-
-        // Second argument is the template data
-        return $args[2];
+        return null;
     }
 }

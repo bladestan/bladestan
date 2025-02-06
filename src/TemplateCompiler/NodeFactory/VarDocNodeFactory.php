@@ -37,7 +37,7 @@ final class VarDocNodeFactory
 
     /**
      * @param VariableAndType[] $variablesAndTypes
-     * @return Nop[]
+     * @return list<Nop>
      */
     public function createDocNodes(array $variablesAndTypes): array
     {

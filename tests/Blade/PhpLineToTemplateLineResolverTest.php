@@ -108,7 +108,7 @@ PHP
     }
 
     /**
-     * @return string[]
+     * @return list<string>
      */
     public static function getAdditionalConfigFiles(): array
     {

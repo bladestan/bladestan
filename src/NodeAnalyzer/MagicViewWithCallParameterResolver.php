@@ -4,18 +4,19 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Illuminate\Support\Str;
 use PhpParser\Node;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\CallLike;
 use PhpParser\Node\Scalar\String_;
+use PHPStan\Analyser\Scope;
 
 final class MagicViewWithCallParameterResolver
 {
     /**
-     * @return ArrayItem[]
+     * @return list<VariableAndType>
      */
-    public function resolve(CallLike $callLike): array
+    public function resolve(CallLike $callLike, Scope $scope): array
     {
         $result = [];
 
@@ -27,10 +28,10 @@ final class MagicViewWithCallParameterResolver
         $viewWithArgs = $callLike->getAttribute('viewWithArgs');
 
         foreach ($viewWithArgs as $variableName => $args) {
-            if ($variableName === 'with') {
-                $result[] = new ArrayItem($args[1]->value, $args[0]->value);
+            if ($variableName === 'with' && $args[0]->value instanceof String_) {
+                $result[] = new VariableAndType($args[0]->value->value, $scope->getType($args[1]->value));
             } elseif (str_starts_with($variableName, 'with')) {
-                $result[] = new ArrayItem($args[0]->value, new String_(Str::camel(substr($variableName, 4))));
+                $result[] = new VariableAndType(Str::camel(substr($variableName, 4)), $scope->getType($args[0]->value));
             }
         }
 

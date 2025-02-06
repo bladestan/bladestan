@@ -4,29 +4,29 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
+use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\HtmlString;
 use Illuminate\View\Component;
 use Illuminate\View\ComponentAttributeBag;
 use InvalidArgumentException;
 use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use PhpParser\Node\Name\FullyQualified;
-use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
+use PHPStan\Type\ObjectType;
 
 final class LaravelViewFunctionMatcher
 {
     public function __construct(
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
-        private readonly MagicViewWithCallParameterResolver $magicViewWithCallParameterResolver
+        private readonly MagicViewWithCallParameterResolver $magicViewWithCallParameterResolver,
+        private readonly TemplateVariableTypesResolver $templateVariableTypesResolver,
     ) {
     }
 
@@ -82,15 +82,14 @@ final class LaravelViewFunctionMatcher
             $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
         }
 
-        $parametersArray->items = $this->magicViewWithCallParameterResolver->resolve(
-            $callLike
-        ) + $parametersArray->items;
+        $parametersArray = [
+            ...$this->magicViewWithCallParameterResolver->resolve($callLike, $scope),
+            ...$this->templateVariableTypesResolver->resolveArray($parametersArray, $scope),
+        ];
 
         if ($scope->isInClass() && $scope->getClassReflection()->is(Component::class)) {
-            $type = new New_(new FullyQualified(HtmlString::class));
-            $parametersArray->items[] = new ArrayItem($type, new String_('slot'));
-            $type = new New_(new FullyQualified(ComponentAttributeBag::class));
-            $parametersArray->items[] = new ArrayItem($type, new String_('attributes'));
+            $parametersArray[] = new VariableAndType('attributes', new ObjectType(ComponentAttributeBag::class));
+            $parametersArray[] = new VariableAndType('slot', new ObjectType(HtmlString::class));
         }
 
         return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
