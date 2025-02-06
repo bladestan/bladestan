@@ -11,6 +11,18 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
      */
     private array $avalibleVariables;
 
+    /**
+     * @param array<string, string> $variablesAndValues
+     */
+    public function __construct(
+        string $rawPhpContent,
+        string $includedViewName,
+        array $variablesAndValues,
+        private readonly ?string $extract,
+    ) {
+        parent::__construct($rawPhpContent, $includedViewName, $variablesAndValues);
+    }
+
     public function preprocessTemplate(string $includedContent): string
     {
         return $includedContent;
@@ -22,6 +34,10 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
         foreach ($this->variablesAndValues as $variableAndValue) {
             preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)#s', $variableAndValue, $variableNames);
             $avalibleVariables = [...$avalibleVariables, ...$variableNames[1]];
+        }
+
+        if ($this->extract) {
+            $avalibleVariables[] = substr($this->extract, 1);
         }
 
         $this->avalibleVariables = $avalibleVariables;
@@ -42,6 +58,9 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
                 $variables
             )
         );
+        if ($this->extract) {
+            $includedViewVariables .= PHP_EOL . "extract({$this->extract});";
+        }
 
         return <<<STRING
 (function () use({$use}) {

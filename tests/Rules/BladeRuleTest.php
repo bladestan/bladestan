@@ -109,6 +109,7 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between string and 10 results in an error.', 16],
             ['Variable $bar might not be defined.', 16],
             // @todo test breaks without the previous statments, they should not affect each other
+            ['Variable $includeData might not be defined.', 18],
             ['Binary operation "+" between string and \'bar\' results in an error.', 18],
             ['If condition is always true.', 18],
             ['Binary operation "+" between string and \'bar\' results in an error.', 18],

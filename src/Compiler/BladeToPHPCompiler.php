@@ -39,10 +39,10 @@ use ReflectionNamedType;
 final class BladeToPHPCompiler
 {
     /**
-     * @see https://regex101.com/r/dyG9A5/1
+     * @see https://regex101.com/r/dpKuqR/1
      * @var string
      */
-    private const VIEW_INCLUDE_REGEX = '/echo \$__env->make\( *\'(.*?)\' *, *(\[(?:.*?)?\] *,|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*? *,)? *\\\\Illuminate\\\\Support\\\\Arr::except\( *get_defined_vars\(\) *, *\[ *\'__data\' *, *\'__path\' *] *\) *\)->render\(\);/s';
+    private const VIEW_INCLUDE_REGEX = '/echo \$__env->make\( *\'([^\']+?)\' *(?:, *(\[.*?\]|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*))?.*?\)->render\(\);/s';
 
     /**
      * @see https://regex101.com/r/Fo7sHW/1
@@ -286,15 +286,20 @@ final class BladeToPHPCompiler
 
         preg_match_all(self::VIEW_INCLUDE_REGEX, $compiled, $includes, PREG_SET_ORDER);
         foreach ($includes as $include) {
-            $arrayString = trim($include[2] ?? '', ' ,');
+            $data = $include[2] ?? '';
+            $extract = null;
+            if (preg_match('#^\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $data) === 1) {
+                $extract = $data;
+                $data = [];
+            } else {
+                $data = $this->arrayStringToArrayConverter->convert($data);
+                // Filter out attributes
+                $data = array_filter($data, function (string|int $key): bool {
+                    return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
+                }, ARRAY_FILTER_USE_KEY);
+            }
 
-            $data = $this->arrayStringToArrayConverter->convert($arrayString);
-            // Filter out attributes
-            $data = array_filter($data, function (string|int $key): bool {
-                return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
-            }, ARRAY_FILTER_USE_KEY);
-
-            $return[] = new IncludedViewAndVariables($include[0], $include[1], $data);
+            $return[] = new IncludedViewAndVariables($include[0], $include[1], $data, $extract);
         }
 
         preg_match_all(self::COMPONENT_REGEX, $compiled, $components, PREG_SET_ORDER);

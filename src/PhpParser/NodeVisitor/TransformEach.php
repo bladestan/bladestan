@@ -4,14 +4,12 @@ declare(strict_types=1);
 
 namespace Bladestan\PhpParser\NodeVisitor;
 
-use Illuminate\Support\Arr;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
@@ -40,18 +38,18 @@ final class TransformEach extends NodeVisitorAbstract
         }
 
         assert($expr->args[0] instanceof Arg);
+        assert($expr->args[1] instanceof Arg);
+        assert($expr->args[2] instanceof Arg);
 
         $iterator = $expr->args[1];
-        if (! $iterator instanceof Arg) {
-            return null;
-        }
 
         $valueName = $expr->args[2];
-        if (! $valueName instanceof Arg || ! $valueName->value instanceof String_) {
+        if (! $valueName->value instanceof String_) {
             return null;
         }
 
         $valueName = $valueName->value->value;
+
         $foreach = new Foreach_(
             $iterator->value,
             new Variable($valueName),
@@ -68,10 +66,7 @@ final class TransformEach extends NodeVisitorAbstract
             return $foreach;
         }
 
-        if (! $expr->args[3] instanceof Arg) {
-            return null;
-        }
-
+        assert($expr->args[3] instanceof Arg);
         if ($expr->args[3]->value instanceof String_ && str_starts_with($expr->args[3]->value->value, 'raw|')) {
             $else = new Echo_([new String_(substr($expr->args[3]->value->value, 4))]);
         } else {
@@ -94,27 +89,7 @@ final class TransformEach extends NodeVisitorAbstract
     {
         return new Echo_([
             new MethodCall(
-                new MethodCall(
-                    new Variable('__env'),
-                    'make',
-                    [
-                        $arg,
-                        new Arg(new Array_($args)),
-                        new Arg(
-                            new StaticCall(
-                                new Name('\\' . Arr::class),
-                                'except',
-                                [
-                                    new Arg(new FuncCall(new Name('get_defined_vars'))),
-                                    new Arg(new Array_([
-                                        new ArrayItem(new String_('__data')),
-                                        new ArrayItem(new String_('__path')),
-                                    ])),
-                                ]
-                            )
-                        ),
-                    ]
-                ),
+                new MethodCall(new Variable('__env'), 'make', [$arg, new Arg(new Array_($args))]),
                 'render'
             ),
         ]);
