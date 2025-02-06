@@ -10,6 +10,7 @@ use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
 use Bladestan\PhpParser\NodeVisitor\TransformEach;
+use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
 use Bladestan\PhpParser\SimplePhpParser;
 use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
@@ -115,6 +116,7 @@ final class BladeToPHPCompiler
                 new DeleteInlineHTML(),
                 new AddLoopVarTypeToForeachNodeVisitor(),
                 new TransformEach(),
+                new TransformIncludes(),
             ]);
             if ($addPHPOpeningTag) {
                 $rawPhpContent = $this->printerStandard->prettyPrintFile($stmts) . "\n";
