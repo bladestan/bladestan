@@ -123,6 +123,14 @@ final class BladeRuleTest extends RuleTestCase
             ['Undefined variable: $foo', 9],
         ]];
 
+        yield [__DIR__ . '/Fixture/with-does-not-taint.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Variable $bar might not be defined.', 9],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 11],
+            ['Variable $foo might not be defined.', 11],
+            ['Undefined variable: $foo', 11],
+        ]];
+
         yield [__DIR__ . '/Fixture/data-from-with.php', [
             ['Binary operation "+" between string and 10 results in an error.', 9],
             ['Variable $bar might not be defined.', 9],
