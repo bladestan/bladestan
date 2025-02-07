@@ -1,0 +1,12 @@
+[files]
+extend-exclude = [
+    ".git/",
+]
+ignore-hidden = false
+
+[default.extend-identifiers]
+"Symplify" = "Symplify"
+"symplify" = "symplify"
+
+# Typos
+"Github" = "GitHub"
