@@ -9,7 +9,7 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
     /**
      * @var array<string>
      */
-    private array $avalibleVariables;
+    private array $availableVariables;
 
     /**
      * @param array<string, string> $variablesAndValues
@@ -28,26 +28,26 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
         return $includedContent;
     }
 
-    public function getInnerScopeVariableNames(array $avalibleVariables): array
+    public function getInnerScopeVariableNames(array $availableVariables): array
     {
         // Extract variables used to create additional data
         foreach ($this->variablesAndValues as $variableAndValue) {
             preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)#s', $variableAndValue, $variableNames);
-            $avalibleVariables = [...$avalibleVariables, ...$variableNames[1]];
+            $availableVariables = [...$availableVariables, ...$variableNames[1]];
         }
 
         if ($this->extract) {
-            $avalibleVariables[] = substr($this->extract, 1);
+            $availableVariables[] = substr($this->extract, 1);
         }
 
-        $this->avalibleVariables = $avalibleVariables;
+        $this->availableVariables = $availableVariables;
 
-        return array_unique([...$this->avalibleVariables, ...array_keys($this->variablesAndValues)]);
+        return array_unique([...$this->availableVariables, ...array_keys($this->variablesAndValues)]);
     }
 
     public function generateInlineRepresentation(string $includedContent): string
     {
-        $use = $this->buildUse($this->avalibleVariables);
+        $use = $this->buildUse($this->availableVariables);
 
         $variables = $this->variablesAndValues;
         $includedViewVariables = implode(

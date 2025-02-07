@@ -19,11 +19,11 @@ abstract class AbstractInlinedElement
     abstract public function preprocessTemplate(string $includedContent): string;
 
     /**
-     * @param array<string> $avalibleVariables
+     * @param array<string> $availableVariables
      *
      * @return array<string>
      */
-    abstract public function getInnerScopeVariableNames(array $avalibleVariables): array;
+    abstract public function getInnerScopeVariableNames(array $availableVariables): array;
 
     abstract public function generateInlineRepresentation(string $includedContent): string;
 

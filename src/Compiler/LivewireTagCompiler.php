@@ -136,7 +136,7 @@ class LivewireTagCompiler
                     continue;
                 }
 
-                // Resolve any addtional required arguments
+                // Resolve any additional required arguments
 
                 $paramType = $parameter->getType();
                 if (! $paramType instanceof ReflectionNamedType) {

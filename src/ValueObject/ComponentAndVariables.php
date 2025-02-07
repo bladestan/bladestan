@@ -36,7 +36,7 @@ final class ComponentAndVariables extends AbstractInlinedElement
             $directive = $match[0];
             $props = $match[1];
 
-            // Expand match untill all nested parenthecies are found
+            // Expand match until all nested parenthecies are found
             if (! $this->hasEvenNumberOfParentheses($directive)) {
                 $startPos = strpos($includedContent, $directive);
                 assert($startPos !== false);
@@ -80,7 +80,7 @@ final class ComponentAndVariables extends AbstractInlinedElement
         return $includedContent;
     }
 
-    public function getInnerScopeVariableNames(array $avalibleVariables): array
+    public function getInnerScopeVariableNames(array $availableVariables): array
     {
         return array_unique(['__env', 'slot', 'attributes', ...$this->innerUse]);
     }

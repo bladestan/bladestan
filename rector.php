@@ -18,7 +18,7 @@ return RectorConfig::configure()
     ->withImportNames()
     ->withSkip([
         '*/Fixture/*',
-        EncapsedStringsToSprintfRector::class, // sprint hurts performance noticably
+        EncapsedStringsToSprintfRector::class, // sprint hurts performance noticeably
     ])
     ->withPhpVersion(PhpVersion::PHP_81)
     ->withSets([PHPUnitSetList::PHPUNIT_100])

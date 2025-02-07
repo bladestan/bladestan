@@ -180,7 +180,7 @@ final class BladeToPHPCompiler
             $arrayString = trim($component[2], ' ,');
             $attributes = $this->arrayStringToArrayConverter->convert($arrayString);
 
-            // Resolve any addtional required arguments
+            // Resolve any additional required arguments
             if (class_exists($class) && method_exists($class, '__construct')) {
                 $parameters = (new ReflectionClass($class))->getMethod('__construct')
                     ->getParameters();
