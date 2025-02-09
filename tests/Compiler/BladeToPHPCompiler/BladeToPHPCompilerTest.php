@@ -19,10 +19,10 @@ final class BladeToPHPCompilerTest extends PHPStanTestCase
     {
         parent::setUp();
 
+        $this->bladeToPHPCompiler = self::getContainer()->getByType(BladeToPHPCompiler::class);
+
         resolve(ViewFactory::class)->getFinder()
             ->addLocation(__DIR__ . '/skeleton/resources/views');
-
-        $this->bladeToPHPCompiler = self::getContainer()->getByType(BladeToPHPCompiler::class);
     }
 
     #[DataProvider('provideData')]

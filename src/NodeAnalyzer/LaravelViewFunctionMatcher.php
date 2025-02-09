@@ -12,6 +12,7 @@ use Illuminate\Support\HtmlString;
 use Illuminate\View\Component;
 use Illuminate\View\ComponentAttributeBag;
 use InvalidArgumentException;
+use Livewire\Component as LivewireComponent;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -87,9 +88,18 @@ final class LaravelViewFunctionMatcher
             ...$this->templateVariableTypesResolver->resolveArray($parametersArray, $scope),
         ];
 
-        if ($scope->isInClass() && $scope->getClassReflection()->is(Component::class)) {
-            $parametersArray[] = new VariableAndType('attributes', new ObjectType(ComponentAttributeBag::class));
-            $parametersArray[] = new VariableAndType('slot', new ObjectType(HtmlString::class));
+        if ($scope->isInClass()) {
+            if ($scope->getClassReflection()->is(Component::class)) {
+                $parametersArray[] = new VariableAndType('attributes', new ObjectType(ComponentAttributeBag::class));
+                $parametersArray[] = new VariableAndType('slot', new ObjectType(HtmlString::class));
+            }
+
+            if ($scope->getClassReflection()->is(LivewireComponent::class)) {
+                $objectType = new ObjectType($scope->getClassReflection()->getName());
+                $parametersArray[] = new VariableAndType('__livewire', $objectType);
+                $parametersArray[] = new VariableAndType('_instance', $objectType);
+                $parametersArray[] = new VariableAndType('this', $objectType);
+            }
         }
 
         return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);

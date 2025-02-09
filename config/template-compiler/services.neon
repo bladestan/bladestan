@@ -4,6 +4,7 @@ services:
     - Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver
     - Bladestan\TemplateCompiler\ErrorFilter
     - Bladestan\PhpParser\SimplePhpParser
+    - Bladestan\Compiler\LivewireTagCompiler
     - Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
 
     -

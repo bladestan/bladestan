@@ -17,6 +17,7 @@ use Illuminate\View\Component;
 use Illuminate\View\ComponentAttributeBag;
 use Illuminate\View\Factory as ViewFactory;
 use InvalidArgumentException;
+use Livewire\Component as LivewireComponent;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
@@ -97,6 +98,13 @@ final class BladeViewMethodsMatcher
         if ((new ObjectType(Component::class))->isSuperTypeOf($calledOnType)->yes()) {
             $parametersArray[] = new VariableAndType('attributes', new ObjectType(ComponentAttributeBag::class));
             $parametersArray[] = new VariableAndType('slot', new ObjectType(HtmlString::class));
+        }
+
+        if ((new ObjectType(LivewireComponent::class))->isSuperTypeOf($calledOnType)->yes()) {
+            $objectType = new ObjectType($calledOnType->getObjectClassReflections()[0]->getName());
+            $parametersArray[] = new VariableAndType('__livewire', $objectType);
+            $parametersArray[] = new VariableAndType('_instance', $objectType);
+            $parametersArray[] = new VariableAndType('this', $objectType);
         }
 
         return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);

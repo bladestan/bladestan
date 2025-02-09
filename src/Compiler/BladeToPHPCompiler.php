@@ -24,7 +24,6 @@ use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\ViewErrorBag;
 use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
-use Illuminate\View\DynamicComponent;
 use Illuminate\View\Factory as EnvView;
 use InvalidArgumentException;
 use PhpParser\Error as ParserError;
@@ -41,33 +40,28 @@ final class BladeToPHPCompiler
 {
     /**
      * @see https://regex101.com/r/dpKuqR/1
-     * @var string
      */
-    private const VIEW_INCLUDE_REGEX = '/echo \$__env->make\( *\'([^\']+?)\' *(?:, *(\[.*?\]|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*))?.*?\)->render\(\);/s';
+    private const string VIEW_INCLUDE_REGEX = '/echo \$__env->make\( *\'([^\']+?)\' *(?:, *(\[.*?\]|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*))?.*?\)->render\(\);/s';
 
     /**
      * @see https://regex101.com/r/Fo7sHW/1
-     * @var string
      */
-    private const COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\(.+?\$component->withAttributes\(\[.*?\]\);/s';
+    private const string COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\(.+?\$component->withAttributes\(\[.*?\]\);/s';
 
     /**
      * @see https://regex101.com/r/XGSsgA/1
-     * @var string
      */
-    private const ANONYMOUS_COMPONENT_REGEX = '/Illuminate\\\\View\\\\AnonymousComponent::resolve\(\[\'view\' => \'([^\']+)\', *\'data\' => (\[.*?\])\] \+ \(isset\(\$attributes\)/s';
+    private const string ANONYMOUS_COMPONENT_REGEX = '/Illuminate\\\\View\\\\AnonymousComponent::resolve\(\[\'view\' => \'([^\']+)\', *\'data\' => (\[.*?\])\] \+ \(isset\(\$attributes\)/s';
 
     /**
      * @see https://regex101.com/r/B3BbxW/1
-     * @var string
      */
-    private const BACKED_COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\((\[(?:.*?)?\]) .+?\$component->withAttributes\(\[.*?\]\);/s';
+    private const string BACKED_COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\((\[(?:.*?)?\]) .+?\$component->withAttributes\(\[.*?\]\);/s';
 
     /**
      * @see https://regex101.com/r/mt3PUM/1
-     * @var string
      */
-    private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
+    private const string COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
 
     /**
      * @var list<array{0: string, 1: string}>
@@ -83,13 +77,9 @@ final class BladeToPHPCompiler
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
+        private readonly LivewireTagCompiler $livewireTagCompiler,
         private readonly SimplePhpParser $simplePhpParser,
     ) {
-        $this->bladeCompiler->component('dynamic-component', DynamicComponent::class);
-        // Replaces <livewire /> tags with arrays so attributes can be analysed
-        $this->bladeCompiler->precompiler(
-            fn (string $string): string => (new LivewireTagCompiler($this->bladeCompiler))->compile($string)
-        );
     }
 
     /**
@@ -129,6 +119,8 @@ final class BladeToPHPCompiler
         } catch (InvalidArgumentException $exception) {
             $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
         }
+
+        $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
 
         // Recursively fetch and compile includes
         foreach ($this->getIncludes($rawPhpContent) as $include) {
