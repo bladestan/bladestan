@@ -12,8 +12,9 @@ class LivewireTagCompiler
 {
     /**
      * @see https://regex101.com/r/4c923z/1
+     * @var string
      */
-    private const string LIVEWIRE_REGEX = '/\s*\$__split = function \(\$name, \$params = \[\]\) {
+    private const LIVEWIRE_REGEX = '/\s*\$__split = function \(\$name, \$params = \[\]\) {
 \s*    return \[\$name, \$params\];
 \s*};
 \s*\[\$__name, \$__params\] = \$__split\(\'([^\']*?)\', (.+?)\);
