@@ -4,22 +4,14 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
-use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Illuminate\Support\Facades\View;
-use Illuminate\Support\HtmlString;
-use Illuminate\View\Component;
-use Illuminate\View\ComponentAttributeBag;
 use InvalidArgumentException;
-use Livewire\Component as LivewireComponent;
-use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PHPStan\Analyser\Scope;
-use PHPStan\Type\ObjectType;
 
 final class LaravelViewFunctionMatcher
 {
@@ -27,7 +19,7 @@ final class LaravelViewFunctionMatcher
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
         private readonly MagicViewWithCallParameterResolver $magicViewWithCallParameterResolver,
-        private readonly TemplateVariableTypesResolver $templateVariableTypesResolver,
+        private readonly ClassPropertiesResolver $classPropertiesResolver,
     ) {
     }
 
@@ -77,29 +69,15 @@ final class LaravelViewFunctionMatcher
 
         $args = $callLike->getArgs();
 
-        if (count($args) !== 2) {
-            $parametersArray = new Array_();
-        } else {
-            $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
+        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
+
+        if (count($args) === 2) {
+            $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
         }
 
-        $parametersArray = [
-            ...$this->magicViewWithCallParameterResolver->resolve($callLike, $scope),
-            ...$this->templateVariableTypesResolver->resolveArray($parametersArray, $scope),
-        ];
-
         if ($scope->isInClass()) {
-            if ($scope->getClassReflection()->is(Component::class)) {
-                $parametersArray[] = new VariableAndType('attributes', new ObjectType(ComponentAttributeBag::class));
-                $parametersArray[] = new VariableAndType('slot', new ObjectType(HtmlString::class));
-            }
-
-            if ($scope->getClassReflection()->is(LivewireComponent::class)) {
-                $objectType = new ObjectType($scope->getClassReflection()->getName());
-                $parametersArray[] = new VariableAndType('__livewire', $objectType);
-                $parametersArray[] = new VariableAndType('_instance', $objectType);
-                $parametersArray[] = new VariableAndType('this', $objectType);
-            }
+            $nativeReflection = $scope->getClassReflection();
+            $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
         }
 
         return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);

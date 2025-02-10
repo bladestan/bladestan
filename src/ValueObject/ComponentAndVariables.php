@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace Bladestan\ValueObject;
 
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
+use Illuminate\View\ComponentAttributeBag;
+use Illuminate\View\ComponentSlot;
 
 final class ComponentAndVariables extends AbstractInlinedElement
 {
@@ -27,6 +29,12 @@ final class ComponentAndVariables extends AbstractInlinedElement
         array $variablesAndValues,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
     ) {
+        $variablesAndValues += [
+            'slot' => 'new \\' . ComponentSlot::class . '()',
+            'attributes' => 'new \\' . ComponentAttributeBag::class . '()',
+            'componentName' => "''",
+        ];
+
         parent::__construct($rawPhpContent, $includedViewName, $variablesAndValues);
     }
 
@@ -71,7 +79,7 @@ final class ComponentAndVariables extends AbstractInlinedElement
             $this->innerUse = [...array_keys($this->defaults), ...array_map(
                 fn (string $value): string => substr($value, 1, -1),
                 $allowed
-            )];
+            ), 'slot', 'attributes'];
         } else {
             $this->defaults = [];
             $this->innerUse = array_keys($this->variablesAndValues);
@@ -82,7 +90,7 @@ final class ComponentAndVariables extends AbstractInlinedElement
 
     public function getInnerScopeVariableNames(array $availableVariables): array
     {
-        return array_unique(['__env', 'slot', 'attributes', ...$this->innerUse]);
+        return array_unique(['__env', ...$this->innerUse]);
     }
 
     public function generateInlineRepresentation(string $includedContent): string
@@ -117,8 +125,6 @@ final class ComponentAndVariables extends AbstractInlinedElement
 (function () use({$outerUse}) {
     {$includedViewVariables}
     (function () use({$innerUse}) {
-        \$slot = new \Illuminate\Support\HtmlString();
-        \$attributes = new \Illuminate\View\ComponentAttributeBag();
         {$includedContent}
     });
 });

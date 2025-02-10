@@ -4,15 +4,15 @@ declare(strict_types=1);
 
 namespace Bladestan\TemplateCompiler\TypeAnalyzer;
 
-use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PHPStan\Analyser\Scope;
+use PHPStan\Type\Type;
 
 final class TemplateVariableTypesResolver
 {
     /**
-     * @return list<VariableAndType>
+     * @return array<string, Type>
      */
     public function resolveArray(Array_ $array, Scope $scope): array
     {
@@ -26,12 +26,11 @@ final class TemplateVariableTypesResolver
             $arrayItemValue = $scope->getType($arrayItem->key);
 
             $keyName = $arrayItemValue->getConstantStrings();
-            if ($keyName === []) {
+            if (count($keyName) !== 1) {
                 continue;
             }
 
-            $variableType = $scope->getType($arrayItem->value);
-            $variableNamesToTypes[] = new VariableAndType(reset($keyName)->getValue(), $variableType);
+            $variableNamesToTypes[reset($keyName)->getValue()] = $scope->getType($arrayItem->value);
         }
 
         return $variableNamesToTypes;

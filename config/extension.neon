@@ -51,6 +51,7 @@ services:
     - Bladestan\NodeAnalyzer\ViewVariableAnalyzer
     - Bladestan\NodeAnalyzer\CompactFunctionCallParameterResolver
     - Bladestan\NodeAnalyzer\MagicViewWithCallParameterResolver
+    - Bladestan\NodeAnalyzer\ClassPropertiesResolver
     - Bladestan\NodeAnalyzer\ValueResolver
 
     - Bladestan\Compiler\BladeToPHPCompiler

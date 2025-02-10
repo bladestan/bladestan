@@ -10,9 +10,10 @@ function () use ($__env, $a, $b, $x) {
     $a = $a;
     $b = $b;
     $c = '' . e($x) . '';
-    function () use ($__env, $a, $b, $c) {
-        $slot = new \Illuminate\Support\HtmlString();
-        $attributes = new \Illuminate\View\ComponentAttributeBag();
+    $slot = new \Illuminate\View\ComponentSlot();
+    $attributes = new \Illuminate\View\ComponentAttributeBag();
+    $componentName = '';
+    function () use ($__env, $a, $b, $c, $slot, $attributes, $componentName) {
         /** file: components/component.blade.php, line: 1 */
         echo e($a . $b);
         /** file: components/component.blade.php, line: 2 */
@@ -27,9 +28,10 @@ function () use ($__env, $a, $b, $x) {
     $a = $a;
     $b = $b;
     $c = '' . e($x) . '';
-    function () use ($__env, $a, $b, $c) {
-        $slot = new \Illuminate\Support\HtmlString();
-        $attributes = new \Illuminate\View\ComponentAttributeBag();
+    $slot = new \Illuminate\View\ComponentSlot();
+    $attributes = new \Illuminate\View\ComponentAttributeBag();
+    $componentName = '';
+    function () use ($__env, $a, $b, $c, $slot, $attributes, $componentName) {
         /** file: components/component.blade.php, line: 1 */
         echo e($a . $b);
         /** file: components/component.blade.php, line: 2 */

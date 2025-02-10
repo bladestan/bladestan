@@ -4,17 +4,20 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Scalar\String_;
+use PHPStan\Analyser\Scope;
+use PHPStan\Type\Type;
 
 final class CompactFunctionCallParameterResolver
 {
-    public function resolveParameters(FuncCall $compactFuncCall): Array_
+    /**
+     * @return array<string, Type>
+     */
+    public function resolveParameters(FuncCall $compactFuncCall, Scope $scope): array
     {
-        $resultArray = new Array_();
+        $resultArray = [];
 
         $funcArgs = $compactFuncCall->getArgs();
 
@@ -25,7 +28,7 @@ final class CompactFunctionCallParameterResolver
 
             $variableName = $funcArg->value->value;
 
-            $resultArray->items[] = new ArrayItem(new Variable($variableName), new String_($variableName));
+            $resultArray[$variableName] = $scope->getType(new Variable($variableName));
         }
 
         return $resultArray;

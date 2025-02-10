@@ -10,7 +10,6 @@ use PhpParser\Node;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\FunctionLike;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Name\FullyQualified;
@@ -41,15 +40,7 @@ final class ViewFunctionArgumentsNodeVisitor extends NodeVisitorAbstract
     public function enterNode(Node $node): ?Node
     {
         if ($node instanceof FuncCall && $node->name instanceof FullyQualified && $node->name->toCodeString() === '\view' && $this->argsByMethodNameStack !== []) {
-            $node->setAttribute(
-                'viewWithArgs',
-                $this->argsByMethodNameStack[array_key_last($this->argsByMethodNameStack)],
-            );
-        }
-
-        if ($node instanceof FunctionLike) {
-            // is this necessary?
-            $this->argsByMethodNameStack['foo'] = null;
+            $node->setAttribute('viewWithArgs', array_pop($this->argsByMethodNameStack));
         }
 
         if ($node instanceof MethodCall && $node->name instanceof Identifier && str_starts_with(

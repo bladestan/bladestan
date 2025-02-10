@@ -4,20 +4,15 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
-use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Contracts\View\Factory as ViewFactoryContract;
 use Illuminate\Http\Response;
 use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\Messages\MailMessage;
-use Illuminate\Support\HtmlString;
 use Illuminate\View\Component;
-use Illuminate\View\ComponentAttributeBag;
 use Illuminate\View\Factory as ViewFactory;
 use InvalidArgumentException;
-use Livewire\Component as LivewireComponent;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
@@ -31,17 +26,35 @@ use PHPStan\Type\UnionType;
 
 final class BladeViewMethodsMatcher
 {
-    private const string VIEW = 'view';
+    /**
+     * @var string
+     */
+    private const VIEW = 'view';
 
-    private const string MAKE = 'make';
+    /**
+     * @var string
+     */
+    private const MAKE = 'make';
 
-    private const string FIRST = 'first';
+    /**
+     * @var string
+     */
+    private const FIRST = 'first';
 
-    private const string EACH = 'renderEach';
+    /**
+     * @var string
+     */
+    private const EACH = 'renderEach';
 
-    private const string WHEN = 'renderWhen';
+    /**
+     * @var string
+     */
+    private const WHEN = 'renderWhen';
 
-    private const string UNLESS = 'renderUnless';
+    /**
+     * @var string
+     */
+    private const UNLESS = 'renderUnless';
 
     /**
      * @var list<string>
@@ -51,7 +64,8 @@ final class BladeViewMethodsMatcher
     public function __construct(
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
-        private readonly TemplateVariableTypesResolver $templateVariableTypesResolver,
+        private readonly MagicViewWithCallParameterResolver $magicViewWithCallParameterResolver,
+        private readonly ClassPropertiesResolver $classPropertiesResolver,
     ) {
     }
 
@@ -83,29 +97,19 @@ final class BladeViewMethodsMatcher
             return null;
         }
 
-        if ($methodName === self::EACH) {
-            $parametersArray = $this->getEachVariables($methodCall, $scope);
-        } else {
-            $parametersArray = [];
+        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($methodCall, $scope);
 
+        if ($methodName === self::EACH) {
+            $parametersArray += $this->getEachVariables($methodCall, $scope);
+        } else {
             $arg = $this->findTemplateDataArgument($methodName, $methodCall);
             if ($arg instanceof Arg) {
-                $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
-                $parametersArray = $this->templateVariableTypesResolver->resolveArray($parametersArray, $scope);
+                $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
             }
         }
 
-        if ((new ObjectType(Component::class))->isSuperTypeOf($calledOnType)->yes()) {
-            $parametersArray[] = new VariableAndType('attributes', new ObjectType(ComponentAttributeBag::class));
-            $parametersArray[] = new VariableAndType('slot', new ObjectType(HtmlString::class));
-        }
-
-        if ((new ObjectType(LivewireComponent::class))->isSuperTypeOf($calledOnType)->yes()) {
-            $objectType = new ObjectType($calledOnType->getObjectClassReflections()[0]->getName());
-            $parametersArray[] = new VariableAndType('__livewire', $objectType);
-            $parametersArray[] = new VariableAndType('_instance', $objectType);
-            $parametersArray[] = new VariableAndType('this', $objectType);
-        }
+        $nativeReflection = $calledOnType->getObjectClassReflections()[0];
+        $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
 
         return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
     }
@@ -149,7 +153,7 @@ final class BladeViewMethodsMatcher
     }
 
     /**
-     * @return list<VariableAndType>
+     * @return array<string, Type>
      */
     private function getEachVariables(MethodCall $methodCall, Scope $scope): array
     {
@@ -166,14 +170,14 @@ final class BladeViewMethodsMatcher
         $constArray = $type->getConstantArrays() ?: $type->getArrays();
         if (count($constArray) === 1) {
             $constArray = $constArray[0];
-            $values[] = new VariableAndType('key', $constArray->getKeyType());
+            $values['key'] = $constArray->getKeyType();
             if ($valueName) {
-                $values[] = new VariableAndType($valueName, $constArray->getItemType());
+                $values[$valueName] = $constArray->getItemType();
             }
         } else {
-            $values[] = new VariableAndType('key', new MixedType());
+            $values['key'] = new MixedType();
             if ($valueName) {
-                $values[] = new VariableAndType($valueName, new MixedType());
+                $values[$valueName] = new MixedType();
             }
         }
 

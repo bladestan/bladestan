@@ -13,7 +13,6 @@ use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
 use Bladestan\PhpParser\SimplePhpParser;
 use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
-use Bladestan\TemplateCompiler\ValueObject\VariableAndType;
 use Bladestan\ValueObject\AbstractInlinedElement;
 use Bladestan\ValueObject\ComponentAndVariables;
 use Bladestan\ValueObject\IncludedViewAndVariables;
@@ -33,6 +32,7 @@ use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
 use PHPStan\Type\ObjectType;
+use PHPStan\Type\Type;
 use ReflectionClass;
 use ReflectionNamedType;
 
@@ -218,7 +218,7 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * @param array<VariableAndType> $variablesAndTypes
+     * @param array<string, Type> $variablesAndTypes
      */
     public function compileContent(
         string $filePath,
@@ -226,13 +226,12 @@ final class BladeToPHPCompiler
         array $variablesAndTypes
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
-        $variablesAndTypes[] = new VariableAndType('__env', new ObjectType(EnvView::class));
-        $variablesAndTypes[] = new VariableAndType('errors', new ObjectType(ViewErrorBag::class));
+        $variablesAndTypes += [
+            '__env' => new ObjectType(EnvView::class),
+            'errors' => new ObjectType(ViewErrorBag::class),
+        ];
 
-        $allVariablesList = array_map(
-            static fn (VariableAndType $variableAndType): string => $variableAndType->variable,
-            $variablesAndTypes
-        );
+        $allVariablesList = array_keys($variablesAndTypes);
 
         $rawPhpContent = $this->inlineInclude($filePath, $fileContents, $allVariablesList, true);
         $rawPhpContent = $this->resolveComponents($rawPhpContent);
@@ -244,13 +243,14 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * @param VariableAndType[] $variablesAndTypes
+     * Add @var docs to top of file
+     *
+     * @param array<string, Type> $variablesAndTypes
      */
     private function decoratePhpContent(string $phpContent, array $variablesAndTypes): string
     {
         $stmts = $this->simplePhpParser->parse($phpContent);
 
-        // Add @var docs to top of file
         $docNodes = $this->varDocNodeFactory->createDocNodes($variablesAndTypes);
         $stmts = array_merge($docNodes, $stmts);
 

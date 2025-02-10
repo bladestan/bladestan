@@ -4,26 +4,24 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Illuminate\Contracts\Support\Arrayable;
 use PhpParser\Node\Expr;
-use PhpParser\Node\Expr\Array_;
-use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\Variable;
-use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\ParametersAcceptorSelector;
 use PHPStan\Type\ObjectType;
-use PHPStan\Type\VerbosityLevel;
+use PHPStan\Type\Type;
 
 final class ViewVariableAnalyzer
 {
     /**
      * Resolve view function call if the data is a variable.
+     *
+     * @return array<string, Type>
      */
-    public function resolve(Expr $expr, Scope $scope): Array_
+    public function resolve(Expr $expr, Scope $scope): array
     {
-        $parametersArray = new Array_();
+        $parametersArray = [];
 
         $type = $scope->getType($expr);
 
@@ -49,11 +47,6 @@ final class ViewVariableAnalyzer
             return (string) $keyType->getValue();
         }, $constantArrays[0]->getKeyTypes());
 
-        foreach (array_combine($keyTypes, $constantArrays[0]->getValueTypes()) as $key => $value) {
-            VarDocNodeFactory::setDocBlock($key, $value->describe(VerbosityLevel::typeOnly()));
-            $parametersArray->items[] = new ArrayItem(new Variable($key), new String_($key));
-        }
-
-        return $parametersArray;
+        return array_combine($keyTypes, $constantArrays[0]->getValueTypes());
     }
 }
