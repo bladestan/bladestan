@@ -28,4 +28,14 @@ class MyMailable extends Mailable
             ],
         );
     }
+
+    /**
+     * @return $this
+     */
+    public function buildWith()
+    {
+        return $this->view('foo')->with([
+            'foo' => 'bar',
+        ]);
+    }
 }
