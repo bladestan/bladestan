@@ -15,6 +15,7 @@ final class MailablesContentMatcher
 {
     public function __construct(
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
+        private readonly MagicViewWithCallParameterResolver $magicViewWithCallParameterResolver,
     ) {
     }
 
@@ -25,7 +26,7 @@ final class MailablesContentMatcher
         }
 
         $viewName = null;
-        $parametersArray = [];
+        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($new, $scope);
         foreach ($new->getArgs() as $argument) {
             $argName = (string) $argument->name;
             if ($argName === 'view') {

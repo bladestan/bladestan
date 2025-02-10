@@ -76,6 +76,9 @@ final class BladeRuleTest extends RuleTestCase
             ['Strict comparison using === between 1 and 1 will always evaluate to true.', 24],
             ['Binary operation "+" between string and 10 results in an error.', 24],
             ['Binary operation "+" between string and \'bar\' results in an error.', 24],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 37],
+            ['Binary operation "+" between string and 10 results in an error.', 37],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 37],
         ]];
 
         yield [__DIR__ . '/Fixture/laravel-mailable-public-properties.php', [
