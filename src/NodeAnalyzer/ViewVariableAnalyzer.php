@@ -9,6 +9,8 @@ use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Variable;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\ParametersAcceptorSelector;
+use PHPStan\Type\Constant\ConstantIntegerType;
+use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 
@@ -26,16 +28,14 @@ final class ViewVariableAnalyzer
         $type = $scope->getType($expr);
 
         $objectType = new ObjectType(Arrayable::class);
-        if (! $objectType->isSuperTypeOf($type)->yes()) {
-            return $parametersArray;
+        if ($objectType->isSuperTypeOf($type)->yes()) {
+            $extendedMethodReflection = $type->getMethod('toArray', $scope);
+            $type = ParametersAcceptorSelector::selectFromArgs(
+                $scope,
+                [],
+                $extendedMethodReflection->getVariants()
+            )->getReturnType();
         }
-
-        $extendedMethodReflection = $type->getMethod('toArray', $scope);
-        $type = ParametersAcceptorSelector::selectFromArgs(
-            $scope,
-            [],
-            $extendedMethodReflection->getVariants()
-        )->getReturnType();
 
         $constantArrays = $type->getConstantArrays();
 
@@ -43,7 +43,7 @@ final class ViewVariableAnalyzer
             return $parametersArray;
         }
 
-        $keyTypes = array_map(function ($keyType): string {
+        $keyTypes = array_map(function (ConstantIntegerType|ConstantStringType $keyType): string {
             return (string) $keyType->getValue();
         }, $constantArrays[0]->getKeyTypes());
 
