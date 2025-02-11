@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bladestan\NodeAnalyzer;
 
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Illuminate\Support\Facades\Response as ResponseFacades;
 use Illuminate\Support\Facades\View;
 use InvalidArgumentException;
 use PhpParser\Node\Expr\FuncCall;
@@ -38,11 +39,12 @@ final class LaravelViewFunctionMatcher
         }
 
         // View::make('', []);
+        // ResponseFacades::view('', []);
         if ($callLike instanceof StaticCall
             && $callLike->class instanceof Name
-            && (string) $callLike->class === View::class
             && $callLike->name instanceof Identifier
-            && (string) $callLike->name === 'make'
+            && ((string) $callLike->class === View::class && (string) $callLike->name === 'make'
+                || (string) $callLike->class === ResponseFacades::class && (string) $callLike->name === 'view')
         ) {
             return $this->matchView($callLike, $scope);
         }

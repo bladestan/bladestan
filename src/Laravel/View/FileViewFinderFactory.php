@@ -39,17 +39,17 @@ final class FileViewFinderFactory
             }
         }
 
-        $fileViewFinder = app()
+        $viewFactory = app()
             ->make(Factory::class);
 
         foreach ($this->directoryHelper->absolutizePaths($basePaths) as $path) {
-            $fileViewFinder->addLocation($path);
+            $viewFactory->addLocation($path);
         }
 
         foreach ($namespacedPaths as $namespace => $paths) {
-            $fileViewFinder->addNamespace($namespace, $this->directoryHelper->absolutizePaths($paths));
+            $viewFactory->addNamespace($namespace, $this->directoryHelper->absolutizePaths($paths));
         }
 
-        return $fileViewFinder;
+        return $viewFactory;
     }
 }

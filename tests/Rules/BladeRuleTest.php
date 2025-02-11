@@ -111,6 +111,11 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between string and \'bar\' results in an error.', 7],
         ]];
 
+        yield [__DIR__ . '/Fixture/response-facade.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Variable $bar might not be defined.', 9],
+        ]];
+
         yield [__DIR__ . '/Fixture/laravel-view-function.php', [
             ['Strict comparison using === between 1 and 1 will always evaluate to true.', 9],
             ['Binary operation "+" between string and 10 results in an error.', 9],
