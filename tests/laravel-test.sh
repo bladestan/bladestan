@@ -2,7 +2,7 @@
 
 set -e
 
-LARAVEL_PROJECT="xammie/mailbook"
+LARAVEL_PROJECT="xammie/mailbook:main"
 
 echo "Install Laravel project: ${LARAVEL_PROJECT}"
 composer create-project --quiet --prefer-dist "${LARAVEL_PROJECT}" ../laravel
