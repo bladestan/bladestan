@@ -7,7 +7,7 @@ namespace Bladestan\PhpParser;
 use PhpParser\Lexer;
 use PhpParser\Node\Stmt;
 use PhpParser\Parser;
-use PhpParser\Parser\Php7;
+use PhpParser\Parser\Php8;
 
 final class SimplePhpParser
 {
@@ -15,7 +15,7 @@ final class SimplePhpParser
 
     public function __construct()
     {
-        $this->nativePhpParser = new Php7(new Lexer());
+        $this->nativePhpParser = new Php8(new Lexer());
     }
 
     /**
