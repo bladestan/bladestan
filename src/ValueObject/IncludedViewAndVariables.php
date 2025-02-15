@@ -23,7 +23,7 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
         parent::__construct($rawPhpContent, $includedViewName, $variablesAndValues);
     }
 
-    public function preprocessTemplate(string $includedContent): string
+    public function preprocessTemplate(string $includedContent, array $sharedVars): string
     {
         return $includedContent;
     }
@@ -63,7 +63,7 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
         }
 
         return <<<STRING
-(function () use({$use}) {
+(function (){$use} {
     {$includedViewVariables}
     {$includedContent}
 });

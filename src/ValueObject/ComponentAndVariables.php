@@ -29,16 +29,19 @@ final class ComponentAndVariables extends AbstractInlinedElement
         array $variablesAndValues,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
     ) {
+        $typeClass = Types::class;
+        $slotClass = ComponentSlot::class;
+        $attributeClass = ComponentAttributeBag::class;
         $variablesAndValues += [
-            'slot' => 'new \\' . ComponentSlot::class . '()',
-            'attributes' => 'new \\' . ComponentAttributeBag::class . '()',
-            'componentName' => "''",
+            'slot' => "new \\{$slotClass}()",
+            'attributes' => "new \\{$attributeClass}()",
+            'componentName' => "{$typeClass}::getString()",
         ];
 
         parent::__construct($rawPhpContent, $includedViewName, $variablesAndValues);
     }
 
-    public function preprocessTemplate(string $includedContent): string
+    public function preprocessTemplate(string $includedContent, array $sharedVars): string
     {
         if (preg_match('/@props\((\[.*?\])\)/s', $includedContent, $match) === 1) {
             $directive = $match[0];
@@ -76,10 +79,10 @@ final class ComponentAndVariables extends AbstractInlinedElement
                 fn (string $value, int|string $key): bool => is_int($key),
                 ARRAY_FILTER_USE_BOTH
             );
-            $this->innerUse = [...array_keys($this->defaults), ...array_map(
+            $this->innerUse = array_unique([...array_keys($this->defaults), ...array_map(
                 fn (string $value): string => substr($value, 1, -1),
                 $allowed
-            ), 'slot', 'attributes'];
+            ), ...$sharedVars, 'slot', 'attributes', 'componentName']);
         } else {
             $this->defaults = [];
             $this->innerUse = array_keys($this->variablesAndValues);
@@ -90,7 +93,7 @@ final class ComponentAndVariables extends AbstractInlinedElement
 
     public function getInnerScopeVariableNames(array $availableVariables): array
     {
-        return array_unique(['__env', ...$this->innerUse]);
+        return $this->innerUse;
     }
 
     public function generateInlineRepresentation(string $includedContent): string
@@ -102,8 +105,8 @@ final class ComponentAndVariables extends AbstractInlinedElement
             $includeVariables = [...$includeVariables, ...$variableNames[1]];
         }
 
-        $outerUse = $this->buildUse(['__env', ...$includeVariables]);
-        $innerUse = $this->buildUse(['__env', ...$this->innerUse]);
+        $outerUse = $this->buildUse($includeVariables);
+        $innerUse = $this->buildUse($this->innerUse);
 
         $variables = $this->variablesAndValues;
         foreach ($this->defaults as $key => $default) {
@@ -122,9 +125,9 @@ final class ComponentAndVariables extends AbstractInlinedElement
         );
 
         return <<<STRING
-(function () use({$outerUse}) {
+(function (){$outerUse} {
     {$includedViewVariables}
-    (function () use({$innerUse}) {
+    (function (){$innerUse} {
         {$includedContent}
     });
 });

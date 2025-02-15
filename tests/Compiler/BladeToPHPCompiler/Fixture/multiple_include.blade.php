@@ -3,13 +3,20 @@
 -----
 <?php
 
-/** @var Illuminate\View\Factory $__env */
 /** @var Illuminate\Support\ViewErrorBag $errors */
+/** @var Illuminate\View\Factory $__env */
+/** @var Illuminate\Foundation\Application $app */
 /** file: foo.blade.php, line: 1 */
-function () use ($__env, $errors) {
+function () {
     $vehicle = 'truck';
+    $errors = resolve(Illuminate\Support\ViewErrorBag::class);
+    $__env = resolve(Illuminate\View\Factory::class);
+    $app = resolve(Illuminate\Foundation\Application::class);
 };
 /** file: foo.blade.php, line: 2 */
-function () use ($__env, $errors) {
+function () {
     $animal = 'frogs';
+    $errors = resolve(Illuminate\Support\ViewErrorBag::class);
+    $__env = resolve(Illuminate\View\Factory::class);
+    $app = resolve(Illuminate\Foundation\Application::class);
 };

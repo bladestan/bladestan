@@ -6,22 +6,18 @@ namespace Bladestan\NodeAnalyzer;
 
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Mail\Mailables\Content;
-use InvalidArgumentException;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
 
 final class MailablesContentMatcher
 {
     public function __construct(
-        private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
     ) {
     }
 
-    /**
-     * @throws InvalidArgumentException
-     */
     public function match(New_ $new, Scope $scope): ?RenderTemplateWithParameters
     {
         if (! $new->class instanceof Name || (string) $new->class !== Content::class) {
@@ -39,15 +35,10 @@ final class MailablesContentMatcher
             }
         }
 
-        if ($viewName === null) {
+        if (! $viewName instanceof String_) {
             return null;
         }
 
-        $resolvedTemplateFilePath = $this->templateFilePathResolver->resolveExistingFilePath($viewName, $scope);
-        if ($resolvedTemplateFilePath === null) {
-            return null;
-        }
-
-        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
+        return new RenderTemplateWithParameters($viewName->value, $parametersArray);
     }
 }

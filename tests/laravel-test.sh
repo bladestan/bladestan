@@ -17,4 +17,4 @@ composer config repositories.0 '{ "type": "path", "url": "../bladestan", "option
 composer require --dev --optimize-autoloader "tomasvotruba/bladestan:*"
 
 echo "Test Laravel project"
-vendor/bin/phpstan analyse
+vendor/bin/phpstan analyse --error-format=blade

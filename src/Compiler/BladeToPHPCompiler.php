@@ -6,6 +6,7 @@ namespace Bladestan\Compiler;
 
 use Bladestan\Blade\PhpLineToTemplateLineResolver;
 use Bladestan\Exception\ShouldNotHappenException;
+use Bladestan\NodeAnalyzer\ValueResolver;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
@@ -17,13 +18,13 @@ use Bladestan\ValueObject\AbstractInlinedElement;
 use Bladestan\ValueObject\ComponentAndVariables;
 use Bladestan\ValueObject\IncludedViewAndVariables;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
+use Bladestan\ValueObject\ViewDataCollector;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\ViewErrorBag;
 use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
-use Illuminate\View\Factory as EnvView;
 use InvalidArgumentException;
 use PhpParser\Error as ParserError;
 use PhpParser\Node;
@@ -35,6 +36,7 @@ use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use ReflectionClass;
 use ReflectionNamedType;
+use Throwable;
 
 final class BladeToPHPCompiler
 {
@@ -73,10 +75,21 @@ final class BladeToPHPCompiler
      */
     private array $errors;
 
+    /**
+     * @var array<string, Type>
+     */
+    private readonly array $shared;
+
+    /**
+     * @var array<string, string>
+     */
+    private readonly array $sharedNative;
+
     public function __construct(
         private readonly Filesystem $fileSystem,
         private readonly BladeCompiler $bladeCompiler,
         private readonly Standard $printerStandard,
+        private readonly ValueResolver $valueResolver,
         private readonly VarDocNodeFactory $varDocNodeFactory,
         private readonly ViewFactory $viewFactory,
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
@@ -85,17 +98,101 @@ final class BladeToPHPCompiler
         private readonly LivewireTagCompiler $livewireTagCompiler,
         private readonly SimplePhpParser $simplePhpParser,
     ) {
+        $errorClass = ViewErrorBag::class;
+        $shared = [
+            'errors' => new ObjectType($errorClass),
+        ];
+        $sharedNative = [
+            'errors' => "resolve({$errorClass}::class)",
+        ];
+        foreach ($this->viewFactory->getShared() as $name => $value) {
+            $shared[(string) $name] = $this->valueResolver->resolve($value);
+            $sharedNative[(string) $name] = $this->valueResolver->toNative($value);
+        }
+
+        $this->shared = $shared;
+        $this->sharedNative = $sharedNative;
+    }
+
+    /**
+     * @param array<string, Type> $parametersArray
+     */
+    public function compileContent(
+        string $resolvedTemplateFilePath,
+        string $fileContents,
+        array $parametersArray
+    ): PhpFileContentsWithLineMap {
+        $this->errors = [];
+
+        $variablesAndTypes = $this->getViewData($resolvedTemplateFilePath)
+            + $parametersArray;
+
+        $rawPhpContent = "<?php\n\n" . $this->inlineInclude(
+            $resolvedTemplateFilePath,
+            $fileContents,
+            array_keys($variablesAndTypes)
+        );
+        $rawPhpContent = $this->resolveComponents($rawPhpContent);
+        $rawPhpContent = $this->bubbleUpImports($rawPhpContent);
+
+        $rawPhpContent = $this->decoratePhpContent($rawPhpContent, $variablesAndTypes);
+
+        $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($rawPhpContent);
+        return new PhpFileContentsWithLineMap($rawPhpContent, $phpLinesToTemplateLines, $this->errors);
+    }
+
+    /**
+     * @return array<string, Type>
+     */
+    private function getViewData(string $viewName): array
+    {
+        $data = $this->getViewDataRaw($viewName);
+
+        $viewData = [];
+        foreach ($data as $name => $value) {
+            $viewData[(string) $name] = $this->valueResolver->resolve($value);
+        }
+
+        return $viewData;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function getViewDataNative(string $viewName): array
+    {
+        $data = $this->getViewDataRaw($viewName);
+
+        $viewData = [];
+        foreach ($data as $name => $value) {
+            $viewData[(string) $name] = $this->valueResolver->toNative($value);
+        }
+
+        return $viewData;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function getViewDataRaw(string $viewName): array
+    {
+        $viewDataCollector = new ViewDataCollector($viewName);
+        try {
+            /** @throws Throwable */
+            $this->viewFactory->callComposer($viewDataCollector);
+        } catch (Throwable $throwable) {
+            $this->errors[] = [$throwable->getMessage(), 'bladestan.data'];
+            return [];
+        }
+
+        return $viewDataCollector->getData();
     }
 
     /**
      * @param array<string> $allVariablesList
      */
-    public function inlineInclude(
-        string $filePath,
-        string $fileContents,
-        array $allVariablesList,
-        bool $addPHPOpeningTag
-    ): string {
+    private function inlineInclude(string $filePath, string $fileContents, array $allVariablesList): string
+    {
         // Precompile contents to add template file name and line numbers
         $fileContents = $this->fileNameAndLineNumberAddingPreCompiler
             ->completeLineCommentsToBladeContents($filePath, $fileContents);
@@ -113,11 +210,7 @@ final class BladeToPHPCompiler
                 new TransformEach(),
                 new TransformIncludes(),
             ]);
-            if ($addPHPOpeningTag) {
-                $rawPhpContent = $this->printerStandard->prettyPrintFile($stmts) . "\n";
-            } else {
-                $rawPhpContent = $this->printerStandard->prettyPrint($stmts) . "\n";
-            }
+            $rawPhpContent = $this->printerStandard->prettyPrint($stmts) . "\n";
         } catch (ParserError) {
             $filePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
             $this->errors[] = ["View [{$filePath}] contains syntx errors.", 'bladestan.parsing'];
@@ -140,12 +233,11 @@ final class BladeToPHPCompiler
                 $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
             }
 
-            $includedContent = $include->preprocessTemplate($includedContent);
+            $includedContent = $include->preprocessTemplate($includedContent, array_keys($this->shared));
             $includedContent = $this->inlineInclude(
                 $includedFilePath,
                 $includedContent,
-                $include->getInnerScopeVariableNames($allVariablesList),
-                false
+                $include->getInnerScopeVariableNames($allVariablesList)
             );
 
             $rawPhpContent = str_replace(
@@ -158,7 +250,7 @@ final class BladeToPHPCompiler
         return $rawPhpContent;
     }
 
-    public function bubbleUpImports(string $rawPhpContent): string
+    private function bubbleUpImports(string $rawPhpContent): string
     {
         preg_match_all('/(?<=^|\s)use .+?;/', $rawPhpContent, $imports);
         foreach ($imports[0] as $import) {
@@ -169,7 +261,7 @@ final class BladeToPHPCompiler
         return str_replace("<?php\n", "<?php\n{$import}", $rawPhpContent);
     }
 
-    public function resolveComponents(string $rawPhpContent): string
+    private function resolveComponents(string $rawPhpContent): string
     {
         preg_match_all(self::BACKED_COMPONENT_REGEX, $rawPhpContent, $components, PREG_SET_ORDER);
         foreach ($components as $component) {
@@ -225,39 +317,12 @@ final class BladeToPHPCompiler
     /**
      * @param array<string, Type> $variablesAndTypes
      */
-    public function compileContent(
-        string $filePath,
-        string $fileContents,
-        array $variablesAndTypes
-    ): PhpFileContentsWithLineMap {
-        $this->errors = [];
-        $variablesAndTypes += [
-            '__env' => new ObjectType(EnvView::class),
-            'errors' => new ObjectType(ViewErrorBag::class),
-        ];
-
-        $allVariablesList = array_keys($variablesAndTypes);
-
-        $rawPhpContent = $this->inlineInclude($filePath, $fileContents, $allVariablesList, true);
-        $rawPhpContent = $this->resolveComponents($rawPhpContent);
-        $rawPhpContent = $this->bubbleUpImports($rawPhpContent);
-
-        $decoratedPhpContent = $this->decoratePhpContent($rawPhpContent, $variablesAndTypes);
-        $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($decoratedPhpContent);
-        return new PhpFileContentsWithLineMap($decoratedPhpContent, $phpLinesToTemplateLines, $this->errors);
-    }
-
-    /**
-     * Add @var docs to top of file
-     *
-     * @param array<string, Type> $variablesAndTypes
-     */
     private function decoratePhpContent(string $phpContent, array $variablesAndTypes): string
     {
-        $stmts = $this->simplePhpParser->parse($phpContent);
-
-        $docNodes = $this->varDocNodeFactory->createDocNodes($variablesAndTypes);
-        $stmts = array_merge($docNodes, $stmts);
+        $stmts = [
+            ...$this->varDocNodeFactory->createDocNodes($variablesAndTypes + $this->shared),
+            ...$this->simplePhpParser->parse($phpContent),
+        ];
 
         return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
     }
@@ -299,6 +364,8 @@ final class BladeToPHPCompiler
                 }, ARRAY_FILTER_USE_KEY);
             }
 
+            $data = $this->getViewDataNative($include[0]) + $data + $this->sharedNative;
+
             $return[] = new IncludedViewAndVariables($include[0], $include[1], $data, $extract);
         }
 
@@ -321,6 +388,8 @@ final class BladeToPHPCompiler
             $includeVariables = array_filter($includeVariables, function (string|int $key): bool {
                 return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
             }, ARRAY_FILTER_USE_KEY);
+
+            $includeVariables = $this->getViewDataNative($view) + $includeVariables + $this->sharedNative;
 
             $return[] = new ComponentAndVariables(
                 $component[0],

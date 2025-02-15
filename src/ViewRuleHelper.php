@@ -6,10 +6,12 @@ namespace Bladestan;
 
 use Bladestan\Compiler\BladeToPHPCompiler;
 use Bladestan\ErrorReporting\Blade\TemplateErrorsFactory;
+use Bladestan\NodeAnalyzer\TemplateFilePathResolver;
 use Bladestan\TemplateCompiler\ErrorFilter;
 use Bladestan\TemplateCompiler\PHPStan\FileAnalyserProvider;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Bladestan\ValueObject\CompiledTemplate;
+use InvalidArgumentException;
 use PhpParser\Node\Expr\CallLike;
 use PHPStan\Analyser\Scope;
 use PHPStan\Rules\IdentifierRuleError;
@@ -23,11 +25,13 @@ final class ViewRuleHelper
         private readonly FileAnalyserProvider $fileAnalyserProvider,
         private readonly TemplateErrorsFactory $templateErrorsFactory,
         private readonly BladeToPHPCompiler $bladeToPhpCompiler,
+        private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ErrorFilter $errorFilter,
     ) {
     }
 
     /**
+     * @throws InvalidArgumentException
      * @return list<IdentifierRuleError>
      */
     public function processNode(
@@ -85,18 +89,24 @@ final class ViewRuleHelper
         );
     }
 
+    /**
+     * @throws InvalidArgumentException
+     */
     private function compileToPhp(
         RenderTemplateWithParameters $renderTemplateWithParameters,
         string $filePath,
         int $phpLine
     ): ?CompiledTemplate {
-        $fileContents = file_get_contents($renderTemplateWithParameters->templateFilePath);
+        $resolvedTemplateFilePath = $this->templateFilePathResolver->resolveExistingFilePath(
+            $renderTemplateWithParameters->templateName
+        );
+        $fileContents = file_get_contents($resolvedTemplateFilePath);
         if ($fileContents === false) {
             return null;
         }
 
         $phpFileContentsWithLineMap = $this->bladeToPhpCompiler->compileContent(
-            $renderTemplateWithParameters->templateFilePath,
+            $resolvedTemplateFilePath,
             $fileContents,
             $renderTemplateWithParameters->parametersArray
         );

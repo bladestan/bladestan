@@ -7,26 +7,22 @@ namespace Bladestan\NodeAnalyzer;
 use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Support\Facades\Response as ResponseFacades;
 use Illuminate\Support\Facades\View;
-use InvalidArgumentException;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
+use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
 
 final class LaravelViewFunctionMatcher
 {
     public function __construct(
-        private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
         private readonly MagicViewWithCallParameterResolver $magicViewWithCallParameterResolver,
         private readonly ClassPropertiesResolver $classPropertiesResolver,
     ) {
     }
 
-    /**
-     * @throws InvalidArgumentException
-     */
     public function match(FuncCall|StaticCall $callLike, Scope $scope): ?RenderTemplateWithParameters
     {
         // view('', []);
@@ -52,9 +48,6 @@ final class LaravelViewFunctionMatcher
         return null;
     }
 
-    /**
-     * @throws InvalidArgumentException
-     */
     private function matchView(FuncCall|StaticCall $callLike, Scope $scope): ?RenderTemplateWithParameters
     {
         if (count($callLike->getArgs()) < 1) {
@@ -63,9 +56,7 @@ final class LaravelViewFunctionMatcher
 
         $template = $callLike->getArgs()[0]
             ->value;
-
-        $resolvedTemplateFilePath = $this->templateFilePathResolver->resolveExistingFilePath($template, $scope);
-        if ($resolvedTemplateFilePath === null) {
+        if (! $template instanceof String_) {
             return null;
         }
 
@@ -82,6 +73,6 @@ final class LaravelViewFunctionMatcher
             $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
         }
 
-        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
+        return new RenderTemplateWithParameters($template->value, $parametersArray);
     }
 }

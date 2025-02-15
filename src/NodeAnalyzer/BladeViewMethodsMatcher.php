@@ -12,7 +12,6 @@ use Illuminate\Mail\Mailable;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\View\Component;
 use Illuminate\View\Factory as ViewFactory;
-use InvalidArgumentException;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\MethodCall;
@@ -62,16 +61,12 @@ final class BladeViewMethodsMatcher
     private const VIEW_FACTORY_METHOD_NAMES = [self::MAKE, self::WHEN, self::UNLESS, self::FIRST, self::EACH];
 
     public function __construct(
-        private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly ViewDataParametersAnalyzer $viewDataParametersAnalyzer,
         private readonly MagicViewWithCallParameterResolver $magicViewWithCallParameterResolver,
         private readonly ClassPropertiesResolver $classPropertiesResolver,
     ) {
     }
 
-    /**
-     * @throws InvalidArgumentException
-     */
     public function match(MethodCall $methodCall, Scope $scope): ?RenderTemplateWithParameters
     {
         $methodName = $this->resolveName($methodCall);
@@ -86,16 +81,11 @@ final class BladeViewMethodsMatcher
         }
 
         $templateNameArg = $this->findTemplateNameArg($methodName, $methodCall);
-        if (! $templateNameArg instanceof Arg) {
+        if (! $templateNameArg instanceof Arg || ! $templateNameArg->value instanceof String_) {
             return null;
         }
 
-        $template = $templateNameArg->value;
-
-        $resolvedTemplateFilePath = $this->templateFilePathResolver->resolveExistingFilePath($template, $scope);
-        if ($resolvedTemplateFilePath === null) {
-            return null;
-        }
+        $template = $templateNameArg->value->value;
 
         $parametersArray = $this->magicViewWithCallParameterResolver->resolve($methodCall, $scope);
 
@@ -111,7 +101,7 @@ final class BladeViewMethodsMatcher
         $nativeReflection = $calledOnType->getObjectClassReflections()[0];
         $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
 
-        return new RenderTemplateWithParameters($resolvedTemplateFilePath, $parametersArray);
+        return new RenderTemplateWithParameters($template, $parametersArray);
     }
 
     private function resolveName(MethodCall $methodCall): ?string

@@ -51,14 +51,20 @@ final class BladeRule implements Rule
     {
         assert($node instanceof CallLike);
 
+        $renderTemplatesWithParameter = match (true) {
+            $node instanceof StaticCall,
+            $node instanceof FuncCall => $this->laravelViewFunctionMatcher->match($node, $scope),
+            $node instanceof MethodCall => $this->bladeViewMethodsMatcher->match($node, $scope),
+            $node instanceof New_ => $this->mailablesContentMatcher->match($node, $scope),
+            default => null,
+        };
+
+        if (! $renderTemplatesWithParameter instanceof RenderTemplateWithParameters) {
+            return [];
+        }
+
         try {
-            $renderTemplatesWithParameter = match (true) {
-                $node instanceof StaticCall,
-                $node instanceof FuncCall => $this->laravelViewFunctionMatcher->match($node, $scope),
-                $node instanceof MethodCall => $this->bladeViewMethodsMatcher->match($node, $scope),
-                $node instanceof New_ => $this->mailablesContentMatcher->match($node, $scope),
-                default => null,
-            };
+            return $this->viewRuleHelper->processNode($node, $scope, $renderTemplatesWithParameter);
         } catch (InvalidArgumentException $invalidArgumentException) {
             return [$this->templateErrorsFactory->createError(
                 $invalidArgumentException->getMessage(),
@@ -67,11 +73,5 @@ final class BladeRule implements Rule
                 $scope->getFile()
             )];
         }
-
-        if (! $renderTemplatesWithParameter instanceof RenderTemplateWithParameters) {
-            return [];
-        }
-
-        return $this->viewRuleHelper->processNode($node, $scope, $renderTemplatesWithParameter);
     }
 }

@@ -16,7 +16,10 @@ abstract class AbstractInlinedElement
     ) {
     }
 
-    abstract public function preprocessTemplate(string $includedContent): string;
+    /**
+     * @param list<string> $sharedVars
+     */
+    abstract public function preprocessTemplate(string $includedContent, array $sharedVars): string;
 
     /**
      * @param array<string> $availableVariables
@@ -33,7 +36,12 @@ abstract class AbstractInlinedElement
     protected function buildUse(array $variables): string
     {
         $variables = array_filter($variables, fn ($name): bool => $name !== 'this');
+        if ($variables === []) {
+            return '';
+        }
 
-        return implode(', ', array_map(static fn (string $variable): string => "\${$variable}", $variables));
+        $variables = implode(', ', array_map(static fn (string $variable): string => "\${$variable}", $variables));
+
+        return " use({$variables})";
     }
 }
