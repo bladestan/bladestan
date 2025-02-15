@@ -17,7 +17,7 @@
         "laravel/framework": "^11.0",
         "nikic/php-parser": "^5.3",
         "orchestra/testbench": "^9.9",
-        "phpunit/phpunit": "^10.0",
+        "phpunit/phpunit": "^11.0",
         "rector/rector": "^2.0",
         "symplify/easy-ci": "^11.3",
         "symplify/easy-coding-standard": "^12.1",
