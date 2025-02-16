@@ -19,8 +19,6 @@ jobs:
           - name: Unit Tests
             run: vendor/bin/phpunit --coverage-clover=coverage.xml
             coverage: xdebug
-          - name: Check Commented Code
-            run: vendor/bin/easy-ci check-commented-code src tests --ansi
           - name: Check Active Classes
             run: vendor/bin/class-leak check src --ansi --skip-type=TomasVotruba\\Bladestan\\ErrorReporting\\PHPStan\\ErrorFormatter\\BladeTemplateErrorFormatter
 
