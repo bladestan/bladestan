@@ -4,9 +4,11 @@ namespace Bladestan\Compiler;
 
 use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
 use ReflectionClass;
 use ReflectionNamedType;
+use RuntimeException;
 
 class LivewireTagCompiler
 {
@@ -109,6 +111,12 @@ class LivewireTagCompiler
 
     private function getComponentClass(string $view): string
     {
+        try {
+            $namespace = Config::string('livewire.class_namespace');
+        } catch (RuntimeException) {
+            $namespace = 'App\\Livewire';
+        }
+
         // Convert the view string to PascalCase for the class name
         $className = collect(explode('.', $view))
             ->map(function (string $part): string {
@@ -116,6 +124,6 @@ class LivewireTagCompiler
             })
             ->implode('\\');
 
-        return "App\\View\\Components\\{$className}";
+        return "{$namespace}\\{$className}";
     }
 }
