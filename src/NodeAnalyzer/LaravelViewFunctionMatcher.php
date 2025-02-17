@@ -23,7 +23,10 @@ final class LaravelViewFunctionMatcher
     ) {
     }
 
-    public function match(FuncCall|StaticCall $callLike, Scope $scope): ?RenderTemplateWithParameters
+    /**
+     * @return list<RenderTemplateWithParameters>
+     */
+    public function match(FuncCall|StaticCall $callLike, Scope $scope): array
     {
         // view('', []);
         if ($callLike instanceof FuncCall
@@ -45,19 +48,22 @@ final class LaravelViewFunctionMatcher
             return $this->matchView($callLike, $scope);
         }
 
-        return null;
+        return [];
     }
 
-    private function matchView(FuncCall|StaticCall $callLike, Scope $scope): ?RenderTemplateWithParameters
+    /**
+     * @return list<RenderTemplateWithParameters>
+     */
+    private function matchView(FuncCall|StaticCall $callLike, Scope $scope): array
     {
         if (count($callLike->getArgs()) < 1) {
-            return null;
+            return [];
         }
 
         $template = $callLike->getArgs()[0]
             ->value;
         if (! $template instanceof String_) {
-            return null;
+            return [];
         }
 
         $args = $callLike->getArgs();
@@ -73,6 +79,6 @@ final class LaravelViewFunctionMatcher
             $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
         }
 
-        return new RenderTemplateWithParameters($template->value, $parametersArray);
+        return [new RenderTemplateWithParameters($template->value, $parametersArray)];
     }
 }

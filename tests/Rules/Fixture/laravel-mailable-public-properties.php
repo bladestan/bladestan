@@ -8,10 +8,18 @@ class ImplicitlyPassingPublicProperties extends Mailable
         public string $foo,
     ) {}
 
-    /** @return $this */
     public function build(): self
     {
-        return $this->view('foo', [
+        $this->view('foo', [
+            'unused' => 'value',
+        ]);
+        $this->html('foo', [
+            'unused' => 'value',
+        ]);
+        $this->markdown('foo', [
+            'unused' => 'value',
+        ]);
+        $this->text('foo', [
             'unused' => 'value',
         ]);
     }

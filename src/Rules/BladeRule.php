@@ -9,7 +9,6 @@ use Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
 use Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
 use Bladestan\NodeAnalyzer\MailablesContentMatcher;
 use Bladestan\TemplateCompiler\Rules\TemplateRulesRegistry;
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
 use Bladestan\ViewRuleHelper;
 use InvalidArgumentException;
 use PhpParser\Node;
@@ -51,27 +50,31 @@ final class BladeRule implements Rule
     {
         assert($node instanceof CallLike);
 
-        $renderTemplatesWithParameter = match (true) {
+        $renderTemplatesWithParameters = match (true) {
             $node instanceof StaticCall,
             $node instanceof FuncCall => $this->laravelViewFunctionMatcher->match($node, $scope),
             $node instanceof MethodCall => $this->bladeViewMethodsMatcher->match($node, $scope),
             $node instanceof New_ => $this->mailablesContentMatcher->match($node, $scope),
-            default => null,
+            default => [],
         };
 
-        if (! $renderTemplatesWithParameter instanceof RenderTemplateWithParameters) {
-            return [];
+        $errors = [];
+        foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
+            try {
+                $errors = [
+                    ...$errors,
+                    ...$this->viewRuleHelper->processNode($node, $scope, $renderTemplateWithParameter),
+                ];
+            } catch (InvalidArgumentException $invalidArgumentException) {
+                $errors[] = $this->templateErrorsFactory->createError(
+                    $invalidArgumentException->getMessage(),
+                    'bladestan.missing',
+                    $node->getLine(),
+                    $scope->getFile()
+                );
+            }
         }
 
-        try {
-            return $this->viewRuleHelper->processNode($node, $scope, $renderTemplatesWithParameter);
-        } catch (InvalidArgumentException $invalidArgumentException) {
-            return [$this->templateErrorsFactory->createError(
-                $invalidArgumentException->getMessage(),
-                'bladestan.missing',
-                $node->getLine(),
-                $scope->getFile()
-            )];
-        }
+        return $errors;
     }
 }

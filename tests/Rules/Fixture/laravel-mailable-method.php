@@ -38,4 +38,45 @@ class MyMailable extends Mailable
             'foo' => 'bar',
         ]);
     }
+
+    public function markdown(): Content
+    {
+        return new Content(
+            markdown: 'foo',
+            with: [
+                'foo' => 'bar',
+            ],
+        );
+    }
+
+    public function text(): Content
+    {
+        return new Content(
+            text: 'foo',
+            with: [
+                'foo' => 'bar',
+            ],
+        );
+    }
+
+    public function html(): Content
+    {
+        return new Content(
+            html: 'foo',
+            with: [
+                'foo' => 'bar',
+            ],
+        );
+    }
+
+    public function htmlAndText(): Content
+    {
+        return new Content(
+            markdown: 'foo',
+            text: 'simple_variable',
+            with: [
+                'foo' => 'bar',
+            ],
+        );
+    }
 }

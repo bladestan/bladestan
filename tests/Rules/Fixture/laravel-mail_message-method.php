@@ -8,12 +8,15 @@ use Illuminate\Notifications\Messages\MailMessage;
 
 class MyMailMessage extends MailMessage
 {
-    /**
-     * @return $this
-     */
     public function build()
     {
-        return $this->view('foo', [
+        $this->view('foo', [
+            'foo' => 'bar',
+        ]);
+        $this->markdown('foo', [
+            'foo' => 'bar',
+        ]);
+        $this->text('foo', [
             'foo' => 'bar',
         ]);
     }
