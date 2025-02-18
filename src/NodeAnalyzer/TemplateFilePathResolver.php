@@ -10,11 +10,6 @@ use InvalidArgumentException;
 
 final class TemplateFilePathResolver
 {
-    public function __construct(
-        private readonly ViewFactory $viewFactory,
-    ) {
-    }
-
     /**
      * @throws InvalidArgumentException
      */
@@ -23,7 +18,8 @@ final class TemplateFilePathResolver
         $resolvedValue = ViewName::normalize($resolvedValue);
 
         /** @throws InvalidArgumentException */
-        $view = $this->viewFactory->getFinder()
+        $view = resolve(ViewFactory::class)
+            ->getFinder()
             ->find($resolvedValue);
 
         return $view;

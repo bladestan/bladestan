@@ -1,8 +1,2 @@
 includes:
     - ../../../config/extension.neon
-
-parameters:
-    bladestan:
-        template_paths:
-            - tests/Rules/templates
-            - dummyNamespace:tests/Rules/templates/nested/directory

@@ -29,9 +29,7 @@ final class FileAnalyserProvider
         }
 
         /** @phpstan-ignore phpstanApi.method */
-        $container = $this->derivativeContainerFactory->create(
-            [__DIR__ . '/../../../config/template-compiler/php-parser.neon']
-        );
+        $container = $this->derivativeContainerFactory->create([]);
 
         /** @phpstan-ignore phpstanApi.classConstant */
         $fileAnalyser = $container->getByType(FileAnalyser::class);
