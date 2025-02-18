@@ -113,9 +113,13 @@ final class ViewRuleHelper
 
         $phpFileContents = $phpFileContentsWithLineMap->phpFileContents;
 
-        $tmpFilePath = sys_get_temp_dir() . '/' . md5($filePath) . '-blade-compiled.php';
-        file_put_contents($tmpFilePath, $phpFileContents);
+        $resolvedTemplateFilePath = str_replace('resources/views/', 'resources/temp/', $resolvedTemplateFilePath);
+        $directory = dirname($resolvedTemplateFilePath);
+        if (!is_dir($directory)) {
+            mkdir($directory, 0777, true);
+        }
+        file_put_contents($resolvedTemplateFilePath, $phpFileContents);
 
-        return new CompiledTemplate($filePath, $tmpFilePath, $phpFileContentsWithLineMap, $phpLine);
+        return null;
     }
 }
