@@ -2,17 +2,8 @@ includes:
     - template-compiler/services.neon
 
 parameters:
-    bladestan:
-        template_paths:
-            # default to typical Laravel directory
-            - resources/views
     bootstrapFiles:
         - ../bootstrap.php
-
-parametersSchema:
-    bladestan: structure([
-        template_paths: listOf(string())
-    ])
 
 rules:
     - Bladestan\Rules\BladeRule
@@ -35,11 +26,6 @@ services:
         class: Illuminate\View\Compilers\BladeCompiler
         factory: ['@Bladestan\Laravel\View\BladeCompilerFactory', 'create']
 
-    - Bladestan\Laravel\View\FileViewFinderFactory
-    -
-        class: Illuminate\Contracts\View\Factory
-        factory: ['@Bladestan\Laravel\View\FileViewFinderFactory', 'create']
-
     - Bladestan\ViewRuleHelper
     - Bladestan\Blade\PhpLineToTemplateLineResolver
     - Bladestan\ErrorReporting\Blade\TemplateErrorsFactory
@@ -56,7 +42,6 @@ services:
     - Bladestan\Compiler\BladeToPHPCompiler
     - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
     - Bladestan\PhpParser\ArrayStringToArrayConverter
-    - Bladestan\Support\DirectoryHelper
 
     -
         class: Bladestan\PhpParser\NodeVisitor\ViewFunctionArgumentsNodeVisitor

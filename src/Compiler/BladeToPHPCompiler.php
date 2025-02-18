@@ -85,19 +85,21 @@ final class BladeToPHPCompiler
      */
     private readonly array $sharedNative;
 
+    private readonly ViewFactory $viewFactory;
+
     public function __construct(
         private readonly Filesystem $fileSystem,
         private readonly BladeCompiler $bladeCompiler,
         private readonly Standard $printerStandard,
         private readonly ValueResolver $valueResolver,
         private readonly VarDocNodeFactory $varDocNodeFactory,
-        private readonly ViewFactory $viewFactory,
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
         private readonly LivewireTagCompiler $livewireTagCompiler,
         private readonly SimplePhpParser $simplePhpParser,
     ) {
+        $this->viewFactory = resolve(ViewFactory::class);
         $errorClass = ViewErrorBag::class;
         $shared = [
             'errors' => new ObjectType($errorClass),
@@ -319,10 +321,10 @@ final class BladeToPHPCompiler
      */
     private function decoratePhpContent(string $phpContent, array $variablesAndTypes): string
     {
-        $stmts = [
-            ...$this->varDocNodeFactory->createDocNodes($variablesAndTypes + $this->shared),
-            ...$this->simplePhpParser->parse($phpContent),
-        ];
+        $stmts = array_merge(
+            $this->varDocNodeFactory->createDocNodes($variablesAndTypes + $this->shared),
+            $this->simplePhpParser->parse($phpContent),
+        );
 
         return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
     }

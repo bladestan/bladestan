@@ -1,0 +1,2 @@
+providers:
+  - Bladestan\Tests\TestServiceProvider

@@ -30,7 +30,7 @@ class ViewDataCollector implements View
     public function with($key, $value = null): self
     {
         if (is_array($key)) {
-            $this->data = [...$this->data, ...$key];
+            $this->data = array_merge($this->data, $key);
         } else {
             $this->data[$key] = $value;
         }

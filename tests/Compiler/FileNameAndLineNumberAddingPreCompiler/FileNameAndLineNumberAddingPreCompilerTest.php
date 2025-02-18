@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Bladestan\Tests\Compiler\FileNameAndLineNumberAddingPreCompiler;
 
 use Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
-use Bladestan\Configuration\Configuration;
 use Bladestan\Tests\TestUtils;
 use Iterator;
 use PHPStan\Testing\PHPStanTestCase;
@@ -32,7 +31,10 @@ final class FileNameAndLineNumberAddingPreCompilerTest extends PHPStanTestCase
         [$inputBladeContents, $expectedPhpCompiledContent] = TestUtils::splitFixture($filePath);
 
         $phpFileContent = $this->fileNameAndLineNumberAddingPreCompiler
-            ->completeLineCommentsToBladeContents('/var/www/resources/views/foo.blade.php', $inputBladeContents);
+            ->completeLineCommentsToBladeContents(
+                __DIR__ . '/../../skeleton/resources/views/foo.blade.php',
+                $inputBladeContents
+            );
         $this->assertSame($expectedPhpCompiledContent, $phpFileContent);
     }
 
@@ -51,28 +53,33 @@ final class FileNameAndLineNumberAddingPreCompilerTest extends PHPStanTestCase
 
     public static function provideData(): Iterator
     {
-        yield ['/var/www/resources/views/foo.blade.php', '/** file: foo.blade.php, line: 1 */{{ $foo }}'];
-
-        yield ['/var/www/resources/views/bar.blade.php', '/** file: bar.blade.php, line: 1 */{{ $foo }}'];
+        yield [
+            __DIR__ . '/../../skeleton/resources/views/foo.blade.php',
+            '/** file: foo.blade.php, line: 1 */{{ $foo }}',
+        ];
 
         yield [
-            '/var/www/resources/views/users/index.blade.php',
+            __DIR__ . '/../../skeleton/resources/views/bar.blade.php',
+            '/** file: bar.blade.php, line: 1 */{{ $foo }}',
+        ];
+
+        yield [
+            (realpath(__DIR__ . '/../..') ?: '') . '/skeleton/resources/views/users/index.blade.php',
             '/** file: users/index.blade.php, line: 1 */{{ $foo }}',
         ];
     }
 
     public function testFindCorrectTemplatePath(): void
     {
-        $configuration = new Configuration([
-            Configuration::TEMPLATE_PATHS => ['resources/views', 'foo/bar'],
-        ]);
-
-        $fileNameAndLineNumberAddingPreCompiler = new FileNameAndLineNumberAddingPreCompiler($configuration);
+        $fileNameAndLineNumberAddingPreCompiler = new FileNameAndLineNumberAddingPreCompiler();
 
         $this->assertSame(
             '/** file: users/index.blade.php, line: 1 */{{ $foo }}',
             $fileNameAndLineNumberAddingPreCompiler
-                ->completeLineCommentsToBladeContents('/var/www/foo/bar/users/index.blade.php', '{{ $foo }}')
+                ->completeLineCommentsToBladeContents(
+                    (realpath(__DIR__ . '/../..') ?: '') . '/skeleton/resources/views/users/index.blade.php',
+                    '{{ $foo }}'
+                )
         );
     }
 

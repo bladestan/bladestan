@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Bladestan\Compiler;
 
-use Bladestan\Configuration\Configuration;
-use Illuminate\Support\Str;
+use Illuminate\Contracts\View\Factory as ViewFactory;
+use Illuminate\View\FileViewFinder;
 
 final class FileNameAndLineNumberAddingPreCompiler
 {
@@ -32,25 +32,41 @@ final class FileNameAndLineNumberAddingPreCompiler
      */
     private const END_OF_MULTILINE_COMPONENT = '/^(?:\s+[^>]+?="[^"]*?")*\s*\/?>/';
 
-    public function __construct(
-        private readonly Configuration $configuration
-    ) {
+    /**
+     * @var list<string>
+     */
+    private readonly array $paths;
+
+    public function __construct()
+    {
+        $finder = resolve(ViewFactory::class)->getFinder();
+        assert($finder instanceof FileViewFinder);
+        /** @var array<array<string>> */
+        $hints = $finder->getHints();
+        /** @var array<string> */
+        $rawPaths = array_merge($finder->getPaths(), ...array_values($hints));
+        $rawPaths[] = base_path();
+
+        $paths = [];
+        foreach ($rawPaths as $rawPath) {
+            if ($realPath = realpath($rawPath)) {
+                $paths[] = $realPath . DIRECTORY_SEPARATOR;
+            }
+        }
+
+        $paths = array_unique($paths);
+        usort($paths, fn ($a, $b): int => strlen($b) <=> strlen($a));
+
+        $this->paths = $paths;
     }
 
     public function getRelativePath(string $fileName): string
     {
-        foreach ($this->configuration->getTemplatePaths() as $templatePath) {
-            $templatePath = rtrim($templatePath, '/') . '/';
-
-            if (str_contains($fileName, $templatePath)) {
-                $fileName = Str::after($fileName, $templatePath);
-                break;
+        $fileName = realpath($fileName) ?: $fileName;
+        foreach ($this->paths as $path) {
+            if (str_starts_with($fileName, $path)) {
+                return substr($fileName, strlen($path));
             }
-        }
-
-        // @note when is file name "0"?
-        if ($fileName === '0') {
-            return '';
         }
 
         return $fileName;

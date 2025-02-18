@@ -6,6 +6,6 @@ namespace LaravelViewFunction;
 
 use function view;
 
-view('dummyNamespace::namespacedView', [
+view('Test::namespacedView', [
     'variable' => 'foobar',
 ]);

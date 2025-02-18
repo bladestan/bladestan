@@ -1,5 +1,5 @@
 @foreach($foos as $value)
-	@include('bar', ['foo' => $value])
+	@include('partial', ['foo' => $value])
 @endforeach
 -----
 <?php

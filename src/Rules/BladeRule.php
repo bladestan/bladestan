@@ -61,10 +61,10 @@ final class BladeRule implements Rule
         $errors = [];
         foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
             try {
-                $errors = [
-                    ...$errors,
-                    ...$this->viewRuleHelper->processNode($node, $scope, $renderTemplateWithParameter),
-                ];
+                $errors = array_merge(
+                    $errors,
+                    $this->viewRuleHelper->processNode($node, $scope, $renderTemplateWithParameter),
+                );
             } catch (InvalidArgumentException $invalidArgumentException) {
                 $errors[] = $this->templateErrorsFactory->createError(
                     $invalidArgumentException->getMessage(),

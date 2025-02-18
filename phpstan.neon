@@ -11,7 +11,7 @@ parameters:
     excludePaths:
         - 'tests/*/Fixture/*'
         - 'tests/Rules/data/*'
-        - 'tests/Rules/templates//*'
+        - 'tests/skeleton/resources/views/*'
 
     exceptions:
         reportUncheckedExceptionDeadCatch: true

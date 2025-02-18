@@ -6,7 +6,6 @@ namespace Bladestan\Tests\Compiler\BladeToPHPCompiler;
 
 use Bladestan\Compiler\BladeToPHPCompiler;
 use Bladestan\Tests\TestUtils;
-use Illuminate\Contracts\View\Factory as ViewFactory;
 use Iterator;
 use PHPStan\Testing\PHPStanTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -20,9 +19,6 @@ final class BladeToPHPCompilerTest extends PHPStanTestCase
         parent::setUp();
 
         $this->bladeToPHPCompiler = self::getContainer()->getByType(BladeToPHPCompiler::class);
-
-        resolve(ViewFactory::class)->getFinder()
-            ->addLocation(__DIR__ . '/skeleton/resources/views');
     }
 
     #[DataProvider('provideData')]

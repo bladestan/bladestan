@@ -33,7 +33,7 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
         // Extract variables used to create additional data
         foreach ($this->variablesAndValues as $variableAndValue) {
             preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)#s', $variableAndValue, $variableNames);
-            $availableVariables = [...$availableVariables, ...$variableNames[1]];
+            $availableVariables = array_merge($availableVariables, $variableNames[1]);
         }
 
         if ($this->extract) {
@@ -42,7 +42,7 @@ final class IncludedViewAndVariables extends AbstractInlinedElement
 
         $this->availableVariables = $availableVariables;
 
-        return array_unique([...$this->availableVariables, ...array_keys($this->variablesAndValues)]);
+        return array_unique(array_merge($this->availableVariables, array_keys($this->variablesAndValues)));
     }
 
     public function generateInlineRepresentation(string $includedContent): string

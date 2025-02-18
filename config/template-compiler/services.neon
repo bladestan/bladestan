@@ -6,8 +6,3 @@ services:
     - Bladestan\PhpParser\SimplePhpParser
     - Bladestan\Compiler\LivewireTagCompiler
     - Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
-
-    -
-        factory: Bladestan\Configuration\Configuration
-        arguments:
-            - %bladestan%
