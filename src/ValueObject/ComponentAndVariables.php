@@ -79,10 +79,10 @@ final class ComponentAndVariables extends AbstractInlinedElement
                 fn (string $value, int|string $key): bool => is_int($key),
                 ARRAY_FILTER_USE_BOTH
             );
-            $this->innerUse = array_unique([...array_keys($this->defaults), ...array_map(
+            $this->innerUse = array_unique(array_merge(array_keys($this->defaults), array_map(
                 fn (string $value): string => substr($value, 1, -1),
                 $allowed
-            ), ...$sharedVars, 'slot', 'attributes', 'componentName']);
+            ), $sharedVars, ['slot', 'attributes', 'componentName']));
         } else {
             $this->defaults = [];
             $this->innerUse = array_keys($this->variablesAndValues);
@@ -102,7 +102,7 @@ final class ComponentAndVariables extends AbstractInlinedElement
         // Extract outer variables used to create inner variables
         foreach ($this->variablesAndValues as $variableAndValue) {
             preg_match_all('#\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)#s', $variableAndValue, $variableNames);
-            $includeVariables = [...$includeVariables, ...$variableNames[1]];
+            $includeVariables = array_merge($includeVariables, $variableNames[1]);
         }
 
         $outerUse = $this->buildUse($includeVariables);

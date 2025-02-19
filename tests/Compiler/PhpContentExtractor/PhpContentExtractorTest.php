@@ -44,7 +44,7 @@ final class PhpContentExtractorTest extends PHPStanTestCase
 
         $fileContent = $this->fileNameAndLineNumberAddingPreCompiler
             ->completeLineCommentsToBladeContents(
-                '/some-directory-name/resources/views/foo.blade.php',
+                realpath(__DIR__ . '/../../skeleton/resources/views/foo.blade.php') ?: '',
                 $inputBladeContents
             );
 

@@ -30,7 +30,7 @@
     "autoload-dev": {
         "psr-4": {
             "Bladestan\\Tests\\": "tests",
-            "App\\": "tests/Compiler/BladeToPHPCompiler/skeleton/app"
+            "App\\": "tests/skeleton/app"
         },
         "classmap": ["tests/Rules/Fixture"]
     },

@@ -1,6 +1,6 @@
-@include('bar', $includeData)
+@include('partial', $includeData)
 @if(true)
-	@include('bar')
+	@include('partial')
 @endif
 -----
 <?php
