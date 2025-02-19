@@ -2,11 +2,14 @@
 
 set -e
 
-LARAVEL_PROJECT="xammie/mailbook:dev-main#fb2a633f49b47c02d3cee8ba1334f313791bd6b6"
+MAILBOOK_REPO="https://github.com/Xammie/mailbook.git"
+MAILBOOK_COMMIT="1.9.0"
 
-echo "Install Laravel project: ${LARAVEL_PROJECT}"
-composer create-project --quiet --prefer-dist "${LARAVEL_PROJECT}" ../laravel
-cd ../laravel/
+echo "Cloning Mailbook project from Git"
+git clone --depth 1 --branch "${MAILBOOK_COMMIT}" "${MAILBOOK_REPO}" ../mailbook
+cd ../mailbook
+
+composer install --quiet --prefer-dist
 composer show --direct
 
 echo "Add Bladestan from source"
@@ -16,5 +19,5 @@ composer config repositories.0 '{ "type": "path", "url": "../bladestan", "option
 # No version information with "type":"path"
 composer require --dev --optimize-autoloader "tomasvotruba/bladestan:*"
 
-echo "Test Laravel project"
+echo "Test Mailbook project"
 vendor/bin/phpstan analyse --error-format=blade
