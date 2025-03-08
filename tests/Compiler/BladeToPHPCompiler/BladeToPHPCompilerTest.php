@@ -28,6 +28,7 @@ final class BladeToPHPCompilerTest extends PHPStanTestCase
 
         $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileContent(
             'foo.blade.php',
+            'foo',
             $inputBladeContents,
             []
         );

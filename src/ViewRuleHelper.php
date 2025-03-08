@@ -107,6 +107,7 @@ final class ViewRuleHelper
 
         $phpFileContentsWithLineMap = $this->bladeToPhpCompiler->compileContent(
             $resolvedTemplateFilePath,
+            $renderTemplateWithParameters->templateName,
             $fileContents,
             $renderTemplateWithParameters->parametersArray
         );

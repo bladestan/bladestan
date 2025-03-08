@@ -121,12 +121,13 @@ final class BladeToPHPCompiler
      */
     public function compileContent(
         string $resolvedTemplateFilePath,
+        string $viewName,
         string $fileContents,
         array $parametersArray
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
 
-        $variablesAndTypes = $this->getViewData($resolvedTemplateFilePath)
+        $variablesAndTypes = $this->getViewData($viewName)
             + $parametersArray;
 
         $rawPhpContent = "<?php\n\n" . $this->inlineInclude(
@@ -178,7 +179,7 @@ final class BladeToPHPCompiler
      */
     private function getViewDataRaw(string $viewName): array
     {
-        $viewDataCollector = new ViewDataCollector($viewName);
+        $viewDataCollector = new ViewDataCollector($viewName, $this->viewFactory);
         try {
             /** @throws Throwable */
             $this->viewFactory->callComposer($viewDataCollector);

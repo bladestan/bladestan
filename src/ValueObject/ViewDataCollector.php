@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\ValueObject;
 
+use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Contracts\View\View;
 
 class ViewDataCollector implements View
@@ -15,12 +16,30 @@ class ViewDataCollector implements View
 
     public function __construct(
         private readonly string $viewName,
+        private readonly ViewFactory $viewFactory,
     ) {
     }
 
     public function name(): string
     {
         return $this->viewName;
+    }
+
+    /**
+     * Used by code that incorrectly assumes Illuminate\View\View
+     */
+    public function getName(): string
+    {
+        return $this->viewName;
+    }
+
+    /**
+     * Used by code that incorrectly assumes Illuminate\View\View
+     */
+    public function getPath(): string
+    {
+        return $this->viewFactory->getFinder()
+            ->find($this->viewName);
     }
 
     /**
