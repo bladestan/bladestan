@@ -184,7 +184,9 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between int and \'foo\' results in an error.', 9],
         ]];
 
-        yield [__DIR__ . '/Fixture/laravel-include-value-from-array.php', []];
+        yield [__DIR__ . '/Fixture/laravel-include-value-from-array.php', [
+            ['Variable $message might not be defined.', 9],
+        ]];
 
         yield [__DIR__ . '/Fixture/laravel-view-include.php', [
             ['Binary operation "+" between string and \'bar\' results in an error.', 9],

@@ -10,6 +10,7 @@ use Bladestan\NodeAnalyzer\ValueResolver;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
+use Bladestan\PhpParser\NodeVisitor\IncludeCollector;
 use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
 use Bladestan\PhpParser\SimplePhpParser;
@@ -28,7 +29,6 @@ use Illuminate\View\Compilers\BladeCompiler;
 use InvalidArgumentException;
 use PhpParser\Error as ParserError;
 use PhpParser\Node;
-use PhpParser\Node\Stmt;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
@@ -40,12 +40,6 @@ use Throwable;
 
 final class BladeToPHPCompiler
 {
-    /**
-     * @see https://regex101.com/r/dpKuqR/1
-     * @var string
-     */
-    private const VIEW_INCLUDE_REGEX = '/echo \$__env->make\( *\'([^\']+?)\' *(?:, *(\[.*?\]|\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*))?.*?\)->render\(\);/s';
-
     /**
      * @see https://regex101.com/r/Fo7sHW/1
      * @var string
@@ -129,18 +123,18 @@ final class BladeToPHPCompiler
         $variablesAndTypes = $this->getViewData($resolvedTemplateFilePath)
             + $parametersArray;
 
-        $rawPhpContent = "<?php\n\n" . $this->inlineInclude(
+        $phpCode = "<?php\n\n" . $this->inlineInclude(
             $resolvedTemplateFilePath,
             $fileContents,
             array_keys($variablesAndTypes)
         );
-        $rawPhpContent = $this->resolveComponents($rawPhpContent);
-        $rawPhpContent = $this->bubbleUpImports($rawPhpContent);
+        $phpCode = $this->resolveComponents($phpCode);
+        $phpCode = $this->bubbleUpImports($phpCode);
 
-        $rawPhpContent = $this->decoratePhpContent($rawPhpContent, $variablesAndTypes);
+        $phpCode = $this->decoratePhpContent($phpCode, $variablesAndTypes);
 
-        $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($rawPhpContent);
-        return new PhpFileContentsWithLineMap($rawPhpContent, $phpLinesToTemplateLines, $this->errors);
+        $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($phpCode);
+        return new PhpFileContentsWithLineMap($phpCode, $phpLinesToTemplateLines, $this->errors);
     }
 
     /**
@@ -204,9 +198,7 @@ final class BladeToPHPCompiler
         try {
             /** @throws InvalidArgumentException */
             $compiledBlade = $this->bladeCompiler->compileString($fileContents);
-            /** @throws ParserError */
-            $stmts = $this->simplePhpParser->parse($compiledBlade);
-            $stmts = $this->traverseStmtsWithVisitors($stmts, [
+            $stmts = $this->traverseStmtsWithVisitors($compiledBlade, [
                 new DeleteInlineHTML(),
                 new AddLoopVarTypeToForeachNodeVisitor(),
                 new TransformEach(),
@@ -216,8 +208,8 @@ final class BladeToPHPCompiler
         } catch (ParserError) {
             $filePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
             $this->errors[] = ["View [{$filePath}] contains syntx errors.", 'bladestan.parsing'];
-        } catch (InvalidArgumentException $exception) {
-            $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
+        } catch (InvalidArgumentException $invalidArgumentException) {
+            $this->errors[] = [$invalidArgumentException->getMessage(), 'bladestan.missing'];
         }
 
         $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
@@ -319,23 +311,25 @@ final class BladeToPHPCompiler
     /**
      * @param array<string, Type> $variablesAndTypes
      */
-    private function decoratePhpContent(string $phpContent, array $variablesAndTypes): string
+    private function decoratePhpContent(string $phpCode, array $variablesAndTypes): string
     {
         $stmts = array_merge(
             $this->varDocNodeFactory->createDocNodes($variablesAndTypes + $this->shared),
-            $this->simplePhpParser->parse($phpContent),
+            $this->simplePhpParser->parse($phpCode),
         );
 
         return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
     }
 
     /**
-     * @param Stmt[] $stmts
      * @param NodeVisitorAbstract[] $nodeVisitors
      * @return Node[]
+     * @throws ParserError
      */
-    private function traverseStmtsWithVisitors(array $stmts, array $nodeVisitors): array
+    private function traverseStmtsWithVisitors(string $phpCode, array $nodeVisitors): array
     {
+        /** @throws ParserError */
+        $stmts = $this->simplePhpParser->parse($phpCode);
         $nodeTraverser = new NodeTraverser();
         foreach ($nodeVisitors as $nodeVisitor) {
             $nodeTraverser->addVisitor($nodeVisitor);
@@ -347,31 +341,38 @@ final class BladeToPHPCompiler
     /**
      * @return list<AbstractInlinedElement>
      */
-    private function getIncludes(string $compiled): array
+    private function getIncludes(string $rawPhpCode): array
     {
         $return = [];
 
-        preg_match_all(self::VIEW_INCLUDE_REGEX, $compiled, $includes, PREG_SET_ORDER);
-        foreach ($includes as $include) {
-            $data = $include[2] ?? '';
-            $extract = null;
-            if (preg_match('#^\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $data) === 1) {
-                $extract = $data;
-                $data = [];
-            } else {
-                $data = $this->arrayStringToArrayConverter->convert($data);
-                // Filter out attributes
-                $data = array_filter($data, function (string|int $key): bool {
-                    return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
-                }, ARRAY_FILTER_USE_KEY);
+        try {
+            $includeCollector = new IncludeCollector();
+            $this->traverseStmtsWithVisitors("<?php\n\n" . $rawPhpCode, [$includeCollector]);
+            foreach ($includeCollector->getIncludes() as $include) {
+                $data = $include[2];
+                $extract = null;
+                if (preg_match('#^\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $data) === 1) {
+                    $extract = $data;
+                    $data = [];
+                } else {
+                    $data = $this->arrayStringToArrayConverter->convert($data);
+                    // Filter out attributes
+                    $data = array_filter($data, function (string|int $key): bool {
+                        return is_string($key) && preg_match(
+                            '#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s',
+                            $key
+                        ) === 1;
+                    }, ARRAY_FILTER_USE_KEY);
+                }
+
+                $data = $this->getViewDataNative($include[0]) + $data + $this->sharedNative;
+
+                $return[] = new IncludedViewAndVariables($include[0], $include[1], $data, $extract);
             }
-
-            $data = $this->getViewDataNative($include[0]) + $data + $this->sharedNative;
-
-            $return[] = new IncludedViewAndVariables($include[0], $include[1], $data, $extract);
+        } catch (ParserError) {
         }
 
-        preg_match_all(self::COMPONENT_REGEX, $compiled, $components, PREG_SET_ORDER);
+        preg_match_all(self::COMPONENT_REGEX, $rawPhpCode, $components, PREG_SET_ORDER);
         foreach ($components as $component) {
             if ($component[1] !== AnonymousComponent::class) {
                 continue;
