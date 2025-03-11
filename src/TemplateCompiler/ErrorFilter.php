@@ -12,40 +12,32 @@ use PHPStan\Analyser\Error;
 final class ErrorFilter
 {
     /**
-     * @var list<string>
-     */
-    private const ERRORS_TO_IGNORE_REGEXES = [
-        // Inlined templates gets all variables forwarded since we don't check what they use beforehand
-        '#Anonymous function has an unused use (.*?)#',
-        // forms errors, given optionally
-        '#Offset 1 on array{\'(.*?)\'} on left side of \?\? does not exist#',
-    ];
-
-    /**
      * @param Error[] $ruleErrors
      * @return Error[]
      */
     public function filterErrors(array $ruleErrors): array
     {
         foreach ($ruleErrors as $key => $ruleError) {
-            if (! $this->isAllowedErrorMessage($ruleError->getMessage())) {
-                continue;
+            if ($this->isAllowedErrorMessage($ruleError)) {
+                unset($ruleErrors[$key]);
             }
-
-            unset($ruleErrors[$key]);
         }
 
         return $ruleErrors;
     }
 
-    private function isAllowedErrorMessage(string $errorMessage): bool
+    private function isAllowedErrorMessage(Error $ruleError): bool
     {
-        foreach (self::ERRORS_TO_IGNORE_REGEXES as $errorToIgnoreRegex) {
-            if (preg_match($errorToIgnoreRegex, $errorMessage)) {
-                return true;
-            }
+        $identifier = $ruleError->getIdentifier();
+        if ($identifier === 'closure.unusedUse') {
+            // Inlined templates gets all variables forwarded since we don't check what they use beforehand
+            return true;
         }
 
-        return false;
+        // forms errors, given optionally
+        return $identifier === 'nullCoalesce.offset' && preg_match(
+            '/^Offset 1 on array{\'(.*?)\'} on left side of \?\? does not exist\.$/',
+            $ruleError->getMessage()
+        );
     }
 }

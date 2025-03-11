@@ -14,7 +14,11 @@ final class ErrorFilterTest extends TestCase
     {
         $errorFilter = new ErrorFilter();
         /** @phpstan-ignore phpstanApi.constructor */
-        $ruleError = new Error('Anonymous function has an unused use $foo.', 'some_file.php');
+        $ruleError = new Error(
+            message: 'Anonymous function has an unused use $foo.',
+            file: 'some_file.php',
+            identifier: 'closure.unusedUse',
+        );
 
         $filteredErrors = $errorFilter->filterErrors([$ruleError]);
         $this->assertEmpty($filteredErrors);
