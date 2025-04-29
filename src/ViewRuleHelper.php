@@ -14,13 +14,11 @@ use Bladestan\ValueObject\CompiledTemplate;
 use InvalidArgumentException;
 use PhpParser\Node\Expr\CallLike;
 use PHPStan\Analyser\Scope;
+use PHPStan\Collectors\Registry;
 use PHPStan\Rules\IdentifierRuleError;
-use PHPStan\Rules\Registry;
 
 final class ViewRuleHelper
 {
-    private Registry $registry;
-
     public function __construct(
         private readonly FileAnalyserProvider $fileAnalyserProvider,
         private readonly TemplateErrorsFactory $templateErrorsFactory,
@@ -52,26 +50,22 @@ final class ViewRuleHelper
         return $this->processTemplateFilePath($compiledTemplate);
     }
 
-    public function setRegistry(Registry $registry): void
-    {
-        $this->registry = $registry;
-    }
-
     /**
      * @return list<IdentifierRuleError>
      */
     private function processTemplateFilePath(CompiledTemplate $compiledTemplate): array
     {
         $fileAnalyser = $this->fileAnalyserProvider->provide();
+        $templateRulesRegistry = $this->fileAnalyserProvider->getRules();
 
         /** @phpstan-ignore phpstanApi.constructor */
-        $collectorsRegistry = new \PHPStan\Collectors\Registry([]);
+        $collectorsRegistry = new Registry([]);
 
         /** @phpstan-ignore phpstanApi.method */
         $fileAnalyserResult = $fileAnalyser->analyseFile(
             $compiledTemplate->phpFilePath,
             [],
-            $this->registry,
+            $templateRulesRegistry,
             $collectorsRegistry,
             null
         );

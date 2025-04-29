@@ -6,7 +6,6 @@ namespace Bladestan\Tests\Rules;
 
 use Bladestan\Rules\BladeRule;
 use Iterator;
-use PhpParser\Node;
 use PHPStan\Rules\Rule;
 use PHPStan\Testing\RuleTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
@@ -242,7 +241,7 @@ final class BladeRuleTest extends RuleTestCase
     }
 
     /**
-     * @return Rule<Node>
+     * @return BladeRule
      */
     protected function getRule(): Rule
     {
