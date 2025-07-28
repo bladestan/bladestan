@@ -8,6 +8,7 @@ use Bladestan\TemplateCompiler\Rules\TemplateRulesRegistry;
 use PhpParser\Node;
 use PHPStan\Analyser\FileAnalyser;
 use PHPStan\DependencyInjection\DerivativeContainerFactory;
+use PHPStan\DependencyInjection\MissingServiceException;
 use PHPStan\Rules\Rule;
 
 /**
@@ -26,6 +27,9 @@ final class FileAnalyserProvider
     ) {
     }
 
+    /**
+     * @throws MissingServiceException
+     */
     public function getRules(): TemplateRulesRegistry
     {
         if ($this->templateRulesRegistry instanceof TemplateRulesRegistry) {
