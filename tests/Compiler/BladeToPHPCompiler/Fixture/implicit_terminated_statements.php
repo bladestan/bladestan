@@ -20,8 +20,12 @@ echo e($foo);
 /** file: foo.blade.php, line: 4 */
 echo '';
 /** file: foo.blade.php, line: 6 */
+if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+}
 if ($foo) {
     /** file: foo.blade.php, line: 7 */
     echo e($foo);
     /** file: foo.blade.php, line: 8 */
+}
+if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
 }

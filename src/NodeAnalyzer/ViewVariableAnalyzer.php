@@ -13,6 +13,7 @@ use PHPStan\Type\Constant\ConstantIntegerType;
 use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
+use ValueError;
 
 final class ViewVariableAnalyzer
 {
@@ -20,6 +21,8 @@ final class ViewVariableAnalyzer
      * Resolve view function call if the data is a variable.
      *
      * @return array<string, Type>
+     *
+     * @throws ValueError
      */
     public function resolve(Expr $expr, Scope $scope): array
     {
