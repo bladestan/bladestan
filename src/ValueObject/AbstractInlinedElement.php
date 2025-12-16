@@ -35,7 +35,7 @@ abstract class AbstractInlinedElement
      */
     protected function buildUse(array $variables): string
     {
-        $variables = array_filter($variables, fn ($name): bool => $name !== 'this');
+        $variables = array_filter($variables, fn (string $name): bool => $name !== 'this');
         if ($variables === []) {
             return '';
         }

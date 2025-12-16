@@ -12,6 +12,7 @@ use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
 use PHPStan\Type\ObjectType;
+use ValueError;
 
 final class MailablesContentMatcher
 {
@@ -23,6 +24,8 @@ final class MailablesContentMatcher
 
     /**
      * @return list<RenderTemplateWithParameters>
+     *
+     * @throws ValueError
      */
     public function match(New_ $new, Scope $scope): array
     {

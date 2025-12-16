@@ -13,6 +13,7 @@ use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
 use PhpParser\Node\Scalar\String_;
 use PHPStan\Analyser\Scope;
+use ValueError;
 
 final class LaravelViewFunctionMatcher
 {
@@ -25,6 +26,8 @@ final class LaravelViewFunctionMatcher
 
     /**
      * @return list<RenderTemplateWithParameters>
+     *
+     * @throws ValueError
      */
     public function match(FuncCall|StaticCall $callLike, Scope $scope): array
     {
@@ -52,6 +55,8 @@ final class LaravelViewFunctionMatcher
 
     /**
      * @return list<RenderTemplateWithParameters>
+     *
+     * @throws ValueError
      */
     private function matchView(FuncCall|StaticCall $callLike, Scope $scope): array
     {

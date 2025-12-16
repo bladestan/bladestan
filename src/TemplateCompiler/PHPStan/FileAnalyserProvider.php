@@ -8,6 +8,7 @@ use Bladestan\TemplateCompiler\Rules\TemplateRulesRegistry;
 use PhpParser\Node;
 use PHPStan\Analyser\FileAnalyser;
 use PHPStan\DependencyInjection\DerivativeContainerFactory;
+use PHPStan\DependencyInjection\MissingServiceException;
 use PHPStan\Rules\Rule;
 
 /**
@@ -43,6 +44,9 @@ final class FileAnalyserProvider
         return $rules;
     }
 
+    /**
+     * @throws MissingServiceException
+     */
     public function provide(): FileAnalyser
     {
         /** @phpstan-ignore phpstanApi.class */

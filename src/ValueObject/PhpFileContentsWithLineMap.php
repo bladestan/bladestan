@@ -13,7 +13,9 @@ final class PhpFileContentsWithLineMap
     public function __construct(
         public readonly string $phpFileContents,
         public readonly array $phpToTemplateLines,
-        /** @var list<array<int, string>> */
+        /**
+         * @var list<array<int, string>>
+         */
         public array $errors,
     ) {
     }

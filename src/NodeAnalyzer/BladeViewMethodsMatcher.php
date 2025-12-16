@@ -23,6 +23,7 @@ use PHPStan\Type\MixedType;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\UnionType;
+use ValueError;
 
 final class BladeViewMethodsMatcher
 {
@@ -89,6 +90,8 @@ final class BladeViewMethodsMatcher
 
     /**
      * @return list<RenderTemplateWithParameters>
+     *
+     * @throws ValueError
      */
     public function match(MethodCall $methodCall, Scope $scope): array
     {
@@ -226,12 +229,7 @@ final class BladeViewMethodsMatcher
             return null;
         }
 
-        if ($methodName === self::VIEW
-            || $methodName === self::MAKE
-            || $methodName === self::EACH
-            || $methodName === self::HTML
-            || $methodName === self::MARKDOWN
-            || $methodName === self::TEXT
+        if (in_array($methodName, [self::VIEW, self::MAKE, self::EACH, self::HTML, self::MARKDOWN, self::TEXT], true)
         ) {
             return $args[0];
         }
@@ -261,12 +259,7 @@ final class BladeViewMethodsMatcher
             return null;
         }
 
-        if ($methodName === self::VIEW
-            || $methodName === self::MAKE
-            || $methodName === self::FIRST
-            || $methodName === self::HTML
-            || $methodName === self::MARKDOWN
-            || $methodName === self::TEXT
+        if (in_array($methodName, [self::VIEW, self::MAKE, self::FIRST, self::HTML, self::MARKDOWN, self::TEXT], true)
         ) {
             return $args[1];
         }
