@@ -23,11 +23,11 @@ return RectorConfig::configure()
     ->withPhpVersion(PhpVersion::PHP_81)
     ->withSets([PHPUnitSetList::PHPUNIT_100])
     ->withPreparedSets(
-        codingStyle: true,
-        codeQuality: true,
         deadCode: true,
-        earlyReturn : true,
+        codeQuality: true,
+        codingStyle: true,
+        typeDeclarations : true,
         privatization : true,
         naming : true,
-        typeDeclarations : true,
+        earlyReturn : true,
     );

@@ -10,7 +10,9 @@ final class RenderTemplateWithParameters
 {
     public function __construct(
         public readonly string $templateName,
-        /** @var array<string, Type> */
+        /**
+         * @var array<string, Type>
+         */
         public readonly array $parametersArray
     ) {
     }

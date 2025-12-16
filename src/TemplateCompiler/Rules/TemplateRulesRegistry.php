@@ -60,6 +60,7 @@ final class TemplateRulesRegistry implements Registry
 
             $rules = [];
             foreach ($parentNodeTypes as $parentNodeType) {
+                assert(is_string($parentNodeType));
                 foreach ($this->rules[$parentNodeType] ?? [] as $rule) {
                     $rules[] = $rule;
                 }

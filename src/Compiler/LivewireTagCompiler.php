@@ -6,29 +6,28 @@ use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use ReflectionClass;
 use ReflectionNamedType;
-use RuntimeException;
 
 class LivewireTagCompiler
 {
     /**
-     * @see https://regex101.com/r/4c923z/1
+     * @see https://regex101.com/r/ZqKKQG/1
      * @var string
      */
     private const LIVEWIRE_REGEX = '/\s*\$__split = function \(\$name, \$params = \[\]\) {
 \s*    return \[\$name, \$params\];
 \s*};
 \s*\[\$__name, \$__params\] = \$__split\(\'([^\']*?)\', (.+?)\);
-\s*\$__html = app\(\'livewire\'\)->mount\(\$__name, \$__params, .+?, \$__slots \?\? \[\], get_defined_vars\(\)\);
-\s*echo \$__html;
+((?:[^;]*;){1,4})
 \s*unset\(\$__html\);
 \s*unset\(\$__name\);
 \s*unset\(\$__params\);
 \s*unset\(\$__split\);
 \s*if \(isset\(\$__slots\)\) {
 \s*    unset\(\$__slots\);
-\s*}/s';
+\s*}/ms';
 
     /**
      * Create a new component tag compiler.
@@ -113,7 +112,7 @@ class LivewireTagCompiler
     {
         try {
             $namespace = Config::string('livewire.class_namespace');
-        } catch (RuntimeException) {
+        } catch (InvalidArgumentException) {
             $namespace = 'App\\Livewire';
         }
 
