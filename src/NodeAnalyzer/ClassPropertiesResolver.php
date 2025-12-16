@@ -23,8 +23,8 @@ final class ClassPropertiesResolver
         $reflectionClass = $classReflection->getNativeReflection();
         $result = [];
 
-        foreach ($reflectionClass->getProperties(ReflectionProperty::IS_PUBLIC) as $property) {
-            $propertyName = $property->getName();
+        foreach ($reflectionClass->getProperties(ReflectionProperty::IS_PUBLIC) as $reflectionProperty) {
+            $propertyName = $reflectionProperty->getName();
             $result[$propertyName] = $classReflection->getProperty($propertyName, $scope)->getReadableType();
         }
 

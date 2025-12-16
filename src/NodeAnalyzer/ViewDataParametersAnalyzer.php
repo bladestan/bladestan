@@ -13,6 +13,7 @@ use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PHPStan\Analyser\Scope;
 use PHPStan\Type\Type;
+use ValueError;
 
 final class ViewDataParametersAnalyzer
 {
@@ -25,6 +26,8 @@ final class ViewDataParametersAnalyzer
 
     /**
      * @return array<string, Type>
+     *
+     * @throws ValueError
      */
     public function resolveParametersArray(Arg $arg, Scope $scope): array
     {

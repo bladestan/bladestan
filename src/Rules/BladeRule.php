@@ -17,7 +17,9 @@ use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\New_;
 use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
+use PHPStan\DependencyInjection\MissingServiceException;
 use PHPStan\Rules\Rule;
+use ValueError;
 
 /**
  * @implements Rule<CallLike>
@@ -39,6 +41,10 @@ final class BladeRule implements Rule
         return CallLike::class;
     }
 
+    /**
+     * @throws MissingServiceException
+     * @throws ValueError
+     */
     public function processNode(Node $node, Scope $scope): array
     {
         $renderTemplatesWithParameters = match (true) {

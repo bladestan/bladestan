@@ -15,6 +15,7 @@ use InvalidArgumentException;
 use PhpParser\Node\Expr\CallLike;
 use PHPStan\Analyser\Scope;
 use PHPStan\Collectors\Registry;
+use PHPStan\DependencyInjection\MissingServiceException;
 use PHPStan\Rules\IdentifierRuleError;
 
 final class ViewRuleHelper
@@ -29,8 +30,10 @@ final class ViewRuleHelper
     }
 
     /**
-     * @throws InvalidArgumentException
      * @return list<IdentifierRuleError>
+     *
+     * @throws InvalidArgumentException
+     * @throws MissingServiceException
      */
     public function processNode(
         CallLike $callLike,
@@ -52,6 +55,8 @@ final class ViewRuleHelper
 
     /**
      * @return list<IdentifierRuleError>
+     *
+     * @throws MissingServiceException
      */
     private function processTemplateFilePath(CompiledTemplate $compiledTemplate): array
     {

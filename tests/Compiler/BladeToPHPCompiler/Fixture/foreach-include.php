@@ -8,6 +8,8 @@
 /** @var Illuminate\View\Factory $__env */
 /** @var Illuminate\Foundation\Application $app */
 /** file: foo.blade.php, line: 1 */
+if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+}
 $__currentLoopData = $foos;
 $__env->addLoop($__currentLoopData);
 foreach ($__currentLoopData as $value) {
@@ -24,3 +26,5 @@ foreach ($__currentLoopData as $value) {
 }
 $__env->popLoop();
 $loop = null;
+if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+}

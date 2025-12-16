@@ -216,11 +216,11 @@ final class BladeToPHPCompiler
         $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
 
         // Recursively fetch and compile includes
-        foreach ($this->getIncludes($rawPhpContent) as $include) {
+        foreach ($this->getIncludes($rawPhpContent) as $inlinedElement) {
             try {
                 /** @throws InvalidArgumentException */
                 $includedFilePath = $this->viewFactory->getFinder()
-                    ->find($include->includedViewName);
+                    ->find($inlinedElement->includedViewName);
                 $includedContent = $this->fileSystem->get($includedFilePath);
             } catch (InvalidArgumentException|FileNotFoundException $exception) {
                 $includedFilePath = '';
@@ -228,16 +228,16 @@ final class BladeToPHPCompiler
                 $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
             }
 
-            $includedContent = $include->preprocessTemplate($includedContent, array_keys($this->shared));
+            $includedContent = $inlinedElement->preprocessTemplate($includedContent, array_keys($this->shared));
             $includedContent = $this->inlineInclude(
                 $includedFilePath,
                 $includedContent,
-                $include->getInnerScopeVariableNames($allVariablesList)
+                $inlinedElement->getInnerScopeVariableNames($allVariablesList)
             );
 
             $rawPhpContent = str_replace(
-                $include->rawPhpContent,
-                $include->generateInlineRepresentation($includedContent),
+                $inlinedElement->rawPhpContent,
+                $inlinedElement->generateInlineRepresentation($includedContent),
                 $rawPhpContent
             );
         }
