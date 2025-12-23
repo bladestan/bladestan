@@ -16,6 +16,8 @@
 /** @var Illuminate\View\Factory $__env */
 /** @var Illuminate\Foundation\Application $app */
 /** file: foo.blade.php, line: 1 */
+if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+}
 if (isset($errors)) {
     /** file: foo.blade.php, line: 2 */
     if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {

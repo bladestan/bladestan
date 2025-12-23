@@ -2,8 +2,8 @@
 
 set -e
 
-MAILBOOK_REPO="https://github.com/AJenbo/mailbook.git"
-MAILBOOK_COMMIT="symfony"
+MAILBOOK_REPO="https://github.com/Xammie/mailbook.git"
+MAILBOOK_COMMIT="1.10.1"
 
 echo "Cloning Mailbook project from Git"
 git clone --depth 1 --branch "${MAILBOOK_COMMIT}" "${MAILBOOK_REPO}" ../mailbook
