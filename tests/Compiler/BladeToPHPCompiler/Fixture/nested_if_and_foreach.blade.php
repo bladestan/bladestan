@@ -25,19 +25,27 @@ if (isset($errors)) {
     if (count($errors) > 0) {
         /** file: foo.blade.php, line: 5 */
         if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+            \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::openLoop();
         }
         $__currentLoopData = $errors->all();
         $__env->addLoop($__currentLoopData);
         foreach ($__currentLoopData as $error) {
             $__env->incrementLoopIndices();
             $loop = new \Bladestan\ValueObject\Loop();
+            if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+                \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::startLoop($loop->index);
+            }
             /** file: foo.blade.php, line: 6 */
             echo e($error);
             /** file: foo.blade.php, line: 7 */
+            if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+                \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::endLoop();
+            }
         }
         $__env->popLoop();
         $loop = null;
         if (\Livewire\Mechanisms\ExtendBlade\ExtendBlade::isRenderingLivewireComponent()) {
+            \Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::closeLoop();
         }
         /** file: foo.blade.php, line: 10 */
     }

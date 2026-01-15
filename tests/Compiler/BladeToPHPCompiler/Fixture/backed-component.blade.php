@@ -8,6 +8,8 @@
 /** @var Illuminate\Foundation\Application $app */
 /** file: foo.blade.php, line: 1 */
 $component = new App\View\Components\BackedComponent(b: $b);
+\Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component);
 echo e($inner);
 /** file: foo.blade.php, line: 2 */
 $component = new App\View\Components\BackedComponent(b: $b);
+\Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component);

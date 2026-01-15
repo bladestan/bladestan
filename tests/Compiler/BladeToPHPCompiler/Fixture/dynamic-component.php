@@ -7,3 +7,4 @@
 /** @var Illuminate\Foundation\Application $app */
 /** file: foo.blade.php, line: 1 */
 $component = new Illuminate\View\DynamicComponent(component: App\MyDynComponent::getComponent());
+\Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component);
