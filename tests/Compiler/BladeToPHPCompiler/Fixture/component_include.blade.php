@@ -26,6 +26,7 @@ function () use ($a, $b, $x) {
         echo e($c);
     };
 };
+\Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component);
 echo e($inner);
 /** file: foo.blade.php, line: 2 */
 function () use ($a, $b, $x) {
@@ -47,3 +48,4 @@ function () use ($a, $b, $x) {
         echo e($c);
     };
 };
+\Livewire\Features\SupportCompiledWireKeys\SupportCompiledWireKeys::processComponentKey($component);
