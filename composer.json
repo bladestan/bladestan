@@ -12,7 +12,7 @@
         "illuminate/notifications": "^11.15|^12.0",
         "illuminate/view": "^11.15|^12.0",
         "larastan/larastan": "^3.0",
-        "livewire/livewire": "^3.3.5",
+        "livewire/livewire": "^3.3.5|^4.0",
         "phpstan/phpstan": "^2.0.1"
     },
     "require-dev": {

@@ -13,21 +13,23 @@ use ReflectionNamedType;
 class LivewireTagCompiler
 {
     /**
-     * @see https://regex101.com/r/ZqKKQG/1
-     * @var string
+     * @see https://regex101.com/r/T2rrSI/1
+     * @var string Regex to find each Livewire block
      */
     private const LIVEWIRE_REGEX = '/\s*\$__split = function \(\$name, \$params = \[\]\) {
 \s*    return \[\$name, \$params\];
 \s*};
-\s*\[\$__name, \$__params\] = \$__split\(\'([^\']*?)\', (.+?)\);
-((?:[^;]*;){1,4})
-\s*unset\(\$__html\);
-\s*unset\(\$__name\);
-\s*unset\(\$__params\);
+(.+?)
 \s*unset\(\$__split\);
 \s*if \(isset\(\$__slots\)\) {
 \s*    unset\(\$__slots\);
-\s*}/ms';
+\s*}/s';
+
+    /**
+     * @see https://regex101.com/r/twpxFN/1
+     * @var string Regex to extract the component name and parameters from a block
+     */
+    private const LIVEWIRE_ARGS_REGEX = '/\$__split\(\'([^\']*?)\', (.+?)\);$/sm';
 
     /**
      * Create a new component tag compiler.
@@ -40,6 +42,11 @@ class LivewireTagCompiler
     public function replace(string $rawPhpContent): string
     {
         return preg_replace_callback(self::LIVEWIRE_REGEX, function (array $match): string {
+            $block = $match[1];
+            if (! preg_match(self::LIVEWIRE_ARGS_REGEX, $block, $match)) {
+                throw new ShouldNotHappenException('Could not extract Livewire arguments from block: ' . $block);
+            }
+
             $attributes = $this->arrayStringToArrayConverter->convert($match[2]);
             return $this->componentString($match[1], $attributes);
         }, $rawPhpContent) ?? throw new ShouldNotHappenException('preg_replace_callback error');
@@ -87,9 +94,7 @@ class LivewireTagCompiler
 
             if ($mountArgs !== []) {
                 $attrString = collect($mountArgs)
-                    ->map(function (mixed $value, string $attribute): string {
-                        return "{$attribute}: {$value}";
-                    })
+                    ->map(fn (mixed $value, string $attribute): string => "{$attribute}: {$value}")
                     ->implode(', ');
 
                 $mount = " \$component->mount({$attrString});";
@@ -97,9 +102,7 @@ class LivewireTagCompiler
         }
 
         $properties = collect($attributes)
-            ->map(function (mixed $value, string $attribute): string {
-                return "\$component->{$attribute} = {$value}";
-            })
+            ->map(fn (mixed $value, string $attribute): string => "\$component->{$attribute} = {$value}")
             ->implode('; ');
         if ($properties) {
             $properties = " {$properties};";
@@ -118,9 +121,7 @@ class LivewireTagCompiler
 
         // Convert the view string to PascalCase for the class name
         $className = collect(explode('.', $view))
-            ->map(function (string $part): string {
-                return Str::studly($part);
-            })
+            ->map(fn (string $part): string => Str::studly($part))
             ->implode('\\');
 
         return "{$namespace}\\{$className}";
