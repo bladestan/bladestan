@@ -32,10 +32,9 @@ final class VarDocNodeFactory
     private function getTypeAsString(Type $type): string
     {
         if ($type instanceof ThisType) {
-            return $type->getStaticObjectType()
-                ->describe(VerbosityLevel::typeOnly());
+            $type = $type->getStaticObjectType();
         }
 
-        return $type->describe(VerbosityLevel::typeOnly());
+        return $type->describe(VerbosityLevel::getRecommendedLevelByType($type));
     }
 }
