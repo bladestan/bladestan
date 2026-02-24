@@ -21,9 +21,9 @@ class LivewireTagCompiler
 \s*};
 (.+?)
 \s*unset\(\$__split\);
-\s*if \(isset\(\$__slots\)\) {
+(?:\s*if \(isset\(\$__slots\)\) {
 \s*    unset\(\$__slots\);
-\s*}/s';
+\s*})?/s';
 
     /**
      * @see https://regex101.com/r/twpxFN/1
