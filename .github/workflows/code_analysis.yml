@@ -20,7 +20,7 @@ jobs:
             run: vendor/bin/phpunit --coverage-clover=coverage.xml
             coverage: xdebug
           - name: Check Active Classes
-            run: vendor/bin/class-leak check src --ansi --skip-type=TomasVotruba\\Bladestan\\ErrorReporting\\PHPStan\\ErrorFormatter\\BladeTemplateErrorFormatter
+            run: vendor/bin/class-leak check src --ansi --skip-type=TomasVotruba\\Bladestan\\ErrorReporting\\PHPStan\\ErrorFormatter\\BladeTemplateErrorFormatter --skip-type=Bladestan\\PHPStan\\BladeSignatureCacheMetaExtension
 
     name: ${{ matrix.actions.name }}
     runs-on: ubuntu-latest
