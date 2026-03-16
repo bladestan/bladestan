@@ -247,7 +247,7 @@ final class BladeToPHPCompiler
 
     private function bubbleUpImports(string $rawPhpContent): string
     {
-        preg_match_all('/(?<=^|\s)use .+?;/', $rawPhpContent, $imports);
+        preg_match_all('/(?<=^|\s)use +[^ \')(]+;/', $rawPhpContent, $imports);
         foreach ($imports[0] as $import) {
             $rawPhpContent = str_replace($import, '', $rawPhpContent);
         }
