@@ -42,11 +42,15 @@ final class CompileStandaloneTest extends PHPStanTestCase
     {
         $compiled = $this->compileView('file_with_include');
 
-        $this->assertStringContainsString("view('included_view', ['foo' => 10, 'bar' => \$foo . 'bar']);", $compiled);
+        // Blade's scope forwarding is preserved as view()'s $mergeData
+        // parameter, so the rule can let scope variables satisfy the
+        // partial's signature exactly as they do at runtime.
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 10, 'bar' => \$foo . 'bar'], get_defined_vars());",
+            $compiled
+        );
         // No inlined closure from the old recursive pipeline
         $this->assertStringNotContainsString('function () {', $compiled);
-        // The scope-forwarding argument is dropped
-        $this->assertStringNotContainsString('get_defined_vars', $compiled);
     }
 
     public function testExtendsIsStrippedNotCompiledAsCallSite(): void

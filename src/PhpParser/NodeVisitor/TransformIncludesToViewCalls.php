@@ -8,6 +8,7 @@ use Illuminate\Support\Arr;
 use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
+use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -28,16 +29,20 @@ use PhpParser\NodeVisitorAbstract;
  *
  * This visitor rewrites it to:
  *
- *     view('partials.header', ['title' => $title]);
+ *     view('partials.header', ['title' => $title], get_defined_vars());
  *
  * The resulting `view()` call is validated by `ViewCallSiteRule` against the
  * included template's signature — `@include` is a call site, exactly like a
  * `view()` call in PHP source.
  *
- * Blade's implicit scope-forwarding argument (`array_diff_key(get_defined_vars(), ...)`
- * for includes, `Arr::except(get_defined_vars(), ...)` for extends) is dropped:
- * if a partial needs a variable, its signature must declare it and the
- * `@include` must pass it explicitly.
+ * Blade's implicit scope forwarding (`array_diff_key(get_defined_vars(), ...)`
+ * for includes, `Arr::except(get_defined_vars(), ...)` for extends) is
+ * normalized to a bare `get_defined_vars()` in `view()`'s third parameter
+ * (`$mergeData`), which has the same runtime meaning. `ViewCallSiteRule`
+ * recognises it and lets variables from the surrounding scope satisfy the
+ * partial's signature, exactly as they do at runtime. Compiled calls without
+ * a forwarding argument (`@each`) stay without one, so only explicit data
+ * counts there.
  *
  * Must run in a separate traversal AFTER `TransformEach` and `TransformIncludes`,
  * which produce the `echo $__env->make(...)->render()` statements this visitor matches.
@@ -67,12 +72,23 @@ final class TransformIncludesToViewCalls extends NodeVisitorAbstract
             return null;
         }
 
-        $args = [$make->args[0]];
-        if (isset($make->args[1])
-            && $make->args[1] instanceof Arg
-            && ! $this->isScopeForwardingArg($make->args[1]->value)
-        ) {
-            $args[] = $make->args[1];
+        $explicitData = null;
+        $forwardsScope = false;
+        foreach (array_slice($make->args, 1) as $arg) {
+            if (! $arg instanceof Arg) {
+                continue;
+            }
+
+            if ($this->isScopeForwardingArg($arg->value)) {
+                $forwardsScope = true;
+            } elseif (! $explicitData instanceof Arg) {
+                $explicitData = $arg;
+            }
+        }
+
+        $args = [$make->args[0], $explicitData ?? new Arg(new Array_([]))];
+        if ($forwardsScope) {
+            $args[] = new Arg(new FuncCall(new Name('get_defined_vars')));
         }
 
         $expression = new Expression(new FuncCall(new Name('view'), $args));

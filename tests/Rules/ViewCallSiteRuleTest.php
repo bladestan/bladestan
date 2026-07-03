@@ -47,6 +47,20 @@ final class ViewCallSiteRuleTest extends RuleTestCase
         yield [__DIR__ . '/Fixture/view-call-site-extends-missing-parent-param.php', [
             ['Template extends-template requires parameter $siteName of type string, but it was not provided.', 11],
         ]];
+
+        // Scope forwarding (compiled @include): variables in the surrounding
+        // scope satisfy the signature, with their types still validated.
+        yield [__DIR__ . '/Fixture/view-call-site-scope-forwarding.php', [
+            [
+                'Template signed-template expects parameter $title of type string, but int given by the surrounding scope.',
+                26,
+            ],
+            [
+                'Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.',
+                30,
+            ],
+            ['Template signed-template requires parameter $title of type string, but it was not provided.', 36],
+        ]];
     }
 
     /**

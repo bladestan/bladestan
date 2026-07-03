@@ -50,7 +50,7 @@ final class BladeToPHPCompiler
      * Version of the compiled standalone output format. Bump to invalidate
      * all incrementally compiled templates when the generated PHP changes.
      */
-    private const COMPILED_OUTPUT_VERSION = 1;
+    private const COMPILED_OUTPUT_VERSION = 2;
 
     /**
      * @see https://regex101.com/r/Fo7sHW/1

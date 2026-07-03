@@ -78,7 +78,7 @@ final class ViewCallSiteRule implements Rule
 
         $errors = [];
         foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
-            $errors = array_merge($errors, $this->validateCallSite($renderTemplateWithParameter));
+            $errors = array_merge($errors, $this->validateCallSite($renderTemplateWithParameter, $scope));
         }
 
         return $errors;
@@ -87,8 +87,10 @@ final class ViewCallSiteRule implements Rule
     /**
      * @return list<IdentifierRuleError>
      */
-    private function validateCallSite(RenderTemplateWithParameters $renderTemplateWithParameters): array
-    {
+    private function validateCallSite(
+        RenderTemplateWithParameters $renderTemplateWithParameters,
+        Scope $scope
+    ): array {
         // Resolve view name → file path
         try {
             $bladeFilePath = $this->templateFilePathResolver->resolveExistingFilePath(
@@ -167,6 +169,32 @@ final class ViewCallSiteRule implements Rule
             // Don't report shared/framework variables as missing
             // These are automatically available in all templates at runtime
             if ($this->isSharedVariable($varName)) {
+                continue;
+            }
+
+            // A scope-forwarding call site (compiled @include) passes every
+            // variable in the surrounding scope to the template, so a scope
+            // variable satisfies the signature — but its type still has to.
+            // Certainty is required: at file level PHPStan reports unknown
+            // variables as maybe-defined mixed, which must stay "missing".
+            if ($renderTemplateWithParameters->forwardsScope && $scope->hasVariableType($varName)->yes()) {
+                $scopeType = $scope->getVariableType($varName);
+                $expectedType = $this->resolveTypeString($expectedTypeString);
+
+                if (! $expectedType->isSuperTypeOf($scopeType)->yes()) {
+                    $errors[] = RuleErrorBuilder::message(
+                        sprintf(
+                            'Template %s expects parameter $%s of type %s, but %s given by the surrounding scope.',
+                            $renderTemplateWithParameters->templateName,
+                            $varName,
+                            $expectedTypeString,
+                            $scopeType->describe(VerbosityLevel::typeOnly()),
+                        ),
+                    )
+                        ->identifier('bladestan.parameterType')
+                        ->build();
+                }
+
                 continue;
             }
 

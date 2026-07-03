@@ -74,7 +74,7 @@ final class LaravelViewFunctionMatcher
 
         $parametersArray = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
 
-        if (count($args) === 2) {
+        if (count($args) >= 2) {
             $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
         }
 
@@ -83,6 +83,13 @@ final class LaravelViewFunctionMatcher
             $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
         }
 
-        return [new RenderTemplateWithParameters($template->value, $parametersArray)];
+        // view($name, $data, get_defined_vars()) forwards the surrounding
+        // scope as $mergeData — this is what compiled @include calls emit.
+        $forwardsScope = isset($args[2])
+            && $args[2]->value instanceof FuncCall
+            && $args[2]->value->name instanceof Name
+            && $args[2]->value->name->toLowerString() === 'get_defined_vars';
+
+        return [new RenderTemplateWithParameters($template->value, $parametersArray, $forwardsScope)];
     }
 }
