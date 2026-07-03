@@ -1,12 +1,47 @@
 includes:
     - template-compiler/services.neon
 
+parametersSchema:
+    bladestan: structure([
+        compiledViewPath: string()
+    ])
+
 parameters:
+    # Where compiled blade templates are written. Project-local on purpose:
+    # analysis `paths` can only expand %rootDir%/%currentWorkingDirectory%/%env%
+    # (never %tmpDir%), and configs loaded through phpstan/extension-installer
+    # cannot contribute analysis paths at all — so users opt in to template
+    # analysis by adding this directory to their own `paths` (and .gitignore):
+    #
+    #     parameters:
+    #         paths:
+    #             - src
+    #             - .bladestan
+    #
+    # The bootstrap only compiles templates when the directory is among the
+    # analysed paths; without it, call-site signature validation still works.
+    bladestan:
+        compiledViewPath: %currentWorkingDirectory%/.bladestan
+
     bootstrapFiles:
         - ../bootstrap.php
 
+    # Error identifiers that are noise in generated template code. The /*
+    # makes this a fnmatch pattern: PHP's fnmatch * crosses directory
+    # separators, and patterns skip the existence check that a bare directory
+    # path would fail before the bootstrap has created it.
+    ignoreErrors:
+        -
+            identifier: closure.unusedUse
+            path: %bladestan.compiledViewPath%/*
+            reportUnmatched: false
+        -
+            identifier: nullCoalesce.offset
+            path: %bladestan.compiledViewPath%/*
+            reportUnmatched: false
+
 rules:
-    - Bladestan\Rules\BladeRule
+    - Bladestan\Rules\ViewCallSiteRule
 
 services:
     errorFormatter.blade:
@@ -16,6 +51,7 @@ services:
             showTipsOfTheDay: %tipsOfTheDay%
             editorUrl: %editorUrl%
             editorUrlTitle: %editorUrlTitle%
+            compiledViewPath: %bladestan.compiledViewPath%
 
     - PhpParser\PrettyPrinter\Standard
     - PhpParser\ConstExprEvaluator
@@ -25,6 +61,12 @@ services:
     -
         class: Illuminate\View\Compilers\BladeCompiler
         factory: ['@Bladestan\Laravel\View\BladeCompilerFactory', 'create']
+
+    # Legacy call-site-centric rule. Deliberately NOT registered under `rules:`
+    # — running it alongside the template-centric analysis would redo all the
+    # old per-call-site FileAnalyser work on top of the new pipeline. Kept as
+    # a service until fully removed.
+    - Bladestan\Rules\BladeRule
 
     - Bladestan\ViewRuleHelper
     - Bladestan\Blade\PhpLineToTemplateLineResolver
@@ -40,8 +82,16 @@ services:
     - Bladestan\NodeAnalyzer\ClassPropertiesResolver
     - Bladestan\NodeAnalyzer\ValueResolver
     - Bladestan\Compiler\BladeToPHPCompiler
+    - Bladestan\Compiler\SignatureExtractor
+    - Bladestan\Compiler\SignatureMerger
     - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
     - Bladestan\PhpParser\ArrayStringToArrayConverter
+    - Bladestan\Discovery\TemplateDiscovery
+
+    -
+        class: Bladestan\Configuration\BladestanConfiguration
+        arguments:
+            compiledViewPath: %bladestan.compiledViewPath%
 
     -
         class: Bladestan\PhpParser\NodeVisitor\ViewFunctionArgumentsNodeVisitor

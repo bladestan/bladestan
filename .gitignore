@@ -5,4 +5,7 @@ composer.lock
 # tools
 .phpunit.cache
 
+# compiled blade templates (bladestan Phase 1)
+.bladestan
+
 .idea

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\PHPStan;
 
+use Bladestan\Compiler\SignatureExtractor;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\View\FileViewFinder;
 use PHPStan\Analyser\ResultCache\ResultCacheMetaExtension;
@@ -14,8 +15,26 @@ use RegexIterator;
 use SplFileInfo;
 use UnexpectedValueException;
 
+/**
+ * Invalidates PHPStan's entire result cache when any template's *contract*
+ * changes: its signature docblock, @extends chain membership, or @props.
+ *
+ * Call sites (view() calls in PHP files and @include call sites in compiled
+ * templates) are validated against these contracts, but PHPStan's dependency
+ * resolver has no way to know a PHP file depends on a blade file — so any
+ * contract change must conservatively invalidate everything.
+ *
+ * Deliberately does NOT hash full template contents: body edits are already
+ * tracked precisely through the compiled file's own hash, and hashing whole
+ * files here would force a full re-analysis on every template edit.
+ */
 final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
 {
+    public function __construct(
+        private readonly SignatureExtractor $signatureExtractor,
+    ) {
+    }
+
     public function getKey(): string
     {
         return 'bladestan-signatures';
@@ -35,8 +54,13 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
         $hashContext = hash_init('xxh128');
 
         foreach ($files as $file) {
+            $contents = @file_get_contents($file);
+            if ($contents === false) {
+                continue;
+            }
+
             hash_update($hashContext, $file);
-            hash_update_file($hashContext, $file);
+            hash_update($hashContext, $this->signatureExtractor->extractSignatureRelevantContent($contents));
         }
 
         return hash_final($hashContext);

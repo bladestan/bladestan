@@ -20,4 +20,6 @@ composer config repositories.0 '{ "type": "path", "url": "../bladestan", "option
 composer require --dev --optimize-autoloader "tomasvotruba/bladestan:*"
 
 echo "Test Mailbook project"
-vendor/bin/phpstan analyse --error-format=blade
+# .bladestan on the CLI opts into template-centric analysis: the bootstrap
+# compiles blade templates there and PHPStan analyses them as regular PHP.
+vendor/bin/phpstan analyse src config .bladestan --error-format=blade

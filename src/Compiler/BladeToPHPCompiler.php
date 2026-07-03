@@ -14,12 +14,14 @@ use Bladestan\PhpParser\NodeVisitor\IncludeCollector;
 use Bladestan\PhpParser\NodeVisitor\RemoveLivewireCompilerArtifacts;
 use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
+use Bladestan\PhpParser\NodeVisitor\TransformIncludesToViewCalls;
 use Bladestan\PhpParser\SimplePhpParser;
 use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Bladestan\ValueObject\AbstractInlinedElement;
 use Bladestan\ValueObject\ComponentAndVariables;
 use Bladestan\ValueObject\IncludedViewAndVariables;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
+use Bladestan\ValueObject\TemplateSignature;
 use Bladestan\ValueObject\ViewDataCollector;
 use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Contracts\View\Factory as ViewFactory;
@@ -28,19 +30,28 @@ use Illuminate\Support\ViewErrorBag;
 use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
 use InvalidArgumentException;
+use PhpParser\Comment\Doc;
 use PhpParser\Error as ParserError;
 use PhpParser\Node;
+use PhpParser\Node\Stmt\Nop;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
+use PHPStan\Type\VerbosityLevel;
 use ReflectionClass;
 use ReflectionNamedType;
 use Throwable;
 
 final class BladeToPHPCompiler
 {
+    /**
+     * Version of the compiled standalone output format. Bump to invalidate
+     * all incrementally compiled templates when the generated PHP changes.
+     */
+    private const COMPILED_OUTPUT_VERSION = 1;
+
     /**
      * @see https://regex101.com/r/Fo7sHW/1
      * @var string
@@ -64,13 +75,6 @@ final class BladeToPHPCompiler
      * @var string
      */
     private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
-
-    /**
-     * Matches a @php ... @endphp block whose docblock contains the @bladestan-signature marker
-     * (a leading description before the marker is fine). Group 1 is the whole block; only blocks
-     * carrying the marker are dropped, so an ordinary @var docblock inside @php keeps working.
-     */
-    private const SIGNATURE_DOCBLOCK_REGEX = '/(@php\s*\n\s*\/\*\*(?:(?!\*\/)[\s\S])*?@bladestan-signature\b[\s\S]*?\*\/\s*\n\s*@endphp)/';
 
     /**
      * Matches every import form PHP allows after `use`: plain, `function`, `const`, and an alias.
@@ -108,6 +112,7 @@ final class BladeToPHPCompiler
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
         private readonly LivewireTagCompiler $livewireTagCompiler,
         private readonly SimplePhpParser $simplePhpParser,
+        private readonly SignatureExtractor $signatureExtractor,
     ) {
         $this->viewFactory = resolve(ViewFactory::class);
         $errorClass = ViewErrorBag::class;
@@ -124,6 +129,83 @@ final class BladeToPHPCompiler
 
         $this->shared = $shared;
         $this->sharedNative = $sharedNative;
+    }
+
+    /**
+     * Hash of compilation inputs that aren't derivable from a template's own
+     * source: shared variables (View::share), framework version, and the
+     * compiled-output format itself. The bootstrap manifest uses this to
+     * detect when every template must be recompiled. Bump COMPILED_OUTPUT_VERSION
+     * whenever the shape of the generated PHP changes.
+     */
+    public function getCompilationContextHash(): string
+    {
+        $sharedTypes = [];
+        foreach ($this->shared as $name => $type) {
+            $sharedTypes[$name] = $type->describe(VerbosityLevel::cache());
+        }
+
+        return hash('xxh128', serialize([
+            self::COMPILED_OUTPUT_VERSION,
+            defined('LARAVEL_VERSION') ? LARAVEL_VERSION : '',
+            $this->sharedNative,
+            $sharedTypes,
+        ]));
+    }
+
+    /**
+     * Compile a blade template standalone — types come from @bladestan-signature
+     * instead of call-site arguments. Used by Phase 1 bootstrap compilation.
+     *
+     * @param string $resolvedTemplateFilePath Absolute path to the .blade.php file
+     * @param string $viewName Laravel view name (e.g. 'welcome', 'layouts.app')
+     */
+    public function compileStandalone(
+        string $resolvedTemplateFilePath,
+        string $viewName,
+    ): PhpFileContentsWithLineMap {
+        $this->errors = [];
+
+        $fileContents = @file_get_contents($resolvedTemplateFilePath);
+        if ($fileContents === false) {
+            return new PhpFileContentsWithLineMap(
+                "<?php\n",
+                [],
+                [["Cannot read file: {$resolvedTemplateFilePath}", 'bladestan.io']],
+            );
+        }
+
+        // Extract signature and strip the signature docblock (explicit or
+        // implicit) so it doesn't survive into the compiled output and
+        // duplicate the @var annotations we emit below.
+        $templateSignature = $this->signatureExtractor->extract($fileContents);
+        $fileContents = $this->signatureExtractor->stripSignatureBlock($fileContents);
+        $fileContents = $this->signatureExtractor->stripImplicitSignatureBlock($fileContents);
+
+        // @extends is not a call site — the parent's requirements are enforced
+        // at the child's call sites via signature merging.
+        $fileContents = $this->signatureExtractor->stripExtends($fileContents);
+
+        // Get view composer data
+        $viewData = $this->getViewData($viewName);
+
+        // Compile blade → PHP without inlining. @include directives become
+        // view() calls that ViewCallSiteRule validates against the included
+        // template's own signature; each template is compiled exactly once.
+        $phpCode = "<?php\n\n" . $this->compileWithoutInlining($resolvedTemplateFilePath, $fileContents);
+        $phpCode = $this->resolveComponents($phpCode);
+        $phpCode = $this->bubbleUpImports($phpCode);
+
+        // Decorate with @var annotations from signature + shared variables
+        $phpCode = $this->decoratePhpContentStandalone($phpCode, $templateSignature, $viewData);
+
+        // Add source tracking header after the <?php tag
+        $sourceHeader = "// @bladestan-source: {$resolvedTemplateFilePath}";
+        $phpCode = preg_replace('/^<\?php\n/', "<?php\n{$sourceHeader}\n", $phpCode) ?? $phpCode;
+
+        $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($phpCode);
+
+        return new PhpFileContentsWithLineMap($phpCode, $phpLinesToTemplateLines, $this->errors);
     }
 
     /**
@@ -202,16 +284,36 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * Replace any @bladestan-signature block with the same number of blank lines, so the marker
-     * never reaches compilation while every following template line keeps its original number.
+     * Compile a single blade template to PHP without inlining includes.
+     * Includes become view() call sites; no recursion into other templates.
      */
-    private function stripSignatureDocblock(string $fileContents): string
+    private function compileWithoutInlining(string $filePath, string $fileContents): string
     {
-        return preg_replace_callback(
-            self::SIGNATURE_DOCBLOCK_REGEX,
-            static fn (array $match): string => str_repeat("\n", substr_count($match[1], "\n")),
-            $fileContents
-        ) ?? $fileContents;
+        $fileContents = $this->fileNameAndLineNumberAddingPreCompiler
+            ->completeLineCommentsToBladeContents($filePath, $fileContents);
+
+        $rawPhpContent = '';
+        try {
+            /** @throws InvalidArgumentException */
+            $compiledBlade = $this->bladeCompiler->compileString($fileContents);
+            $stmts = $this->traverseStmtsWithVisitors($compiledBlade, [
+                new DeleteInlineHTML(),
+                new AddLoopVarTypeToForeachNodeVisitor(),
+                new TransformEach(),
+                new TransformIncludes(),
+            ]);
+            // Separate traversal: TransformEach/TransformIncludes produce the
+            // `echo $__env->make(...)->render()` statements this visitor matches.
+            $stmts = $this->traverseNodesWithVisitors($stmts, [new TransformIncludesToViewCalls()]);
+            $rawPhpContent = $this->printerStandard->prettyPrint($stmts) . "\n";
+        } catch (ParserError) {
+            $relativeFilePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
+            $this->errors[] = ["View [{$relativeFilePath}] contains syntx errors.", 'bladestan.parsing'];
+        } catch (InvalidArgumentException $invalidArgumentException) {
+            $this->errors[] = [$invalidArgumentException->getMessage(), 'bladestan.missing'];
+        }
+
+        return $this->livewireTagCompiler->replace($rawPhpContent);
     }
 
     /**
@@ -219,13 +321,6 @@ final class BladeToPHPCompiler
      */
     private function inlineInclude(string $filePath, string $fileContents, array $allVariablesList): string
     {
-        // A @bladestan-signature block declares a template's variable contract for template-centric
-        // analysis. Here types come from the call site instead, so the block carries no meaning;
-        // leaving it in would turn its @var tags into contradictory inline type assertions. Drop it
-        // (keeping the line count intact for error mapping) so a template can already carry that
-        // annotation while still analysing cleanly.
-        $fileContents = $this->stripSignatureDocblock($fileContents);
-
         // Precompile contents to add template file name and line numbers
         $fileContents = $this->fileNameAndLineNumberAddingPreCompiler
             ->completeLineCommentsToBladeContents($filePath, $fileContents);
@@ -380,6 +475,56 @@ final class BladeToPHPCompiler
     }
 
     /**
+     * Decorate compiled PHP with @var annotations from a TemplateSignature
+     * (string-based types) plus shared variables (PHPStan Type objects).
+     *
+     * @param array<string, Type> $viewData Additional types from view composers
+     */
+    private function decoratePhpContentStandalone(
+        string $phpCode,
+        TemplateSignature $templateSignature,
+        array $viewData,
+    ): string {
+        $varNops = [];
+
+        // Emit @var from signature (string-based)
+        foreach ($templateSignature->variables as $name => $type) {
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$type} \${$name} */"));
+            $varNops[] = $nop;
+        }
+
+        // Emit @var from view composer data (PHPStan Type objects, skip if in signature)
+        foreach ($viewData as $name => $type) {
+            if (isset($templateSignature->variables[$name])) {
+                continue;
+            }
+
+            $typeStr = $type->describe(VerbosityLevel::typeOnly());
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
+            $varNops[] = $nop;
+        }
+
+        // Emit @var from shared variables (skip if already declared)
+        $alreadyDeclared = array_merge(array_keys($templateSignature->variables), array_keys($viewData));
+        foreach ($this->shared as $name => $type) {
+            if (in_array($name, $alreadyDeclared, true)) {
+                continue;
+            }
+
+            $typeStr = $type->describe(VerbosityLevel::typeOnly());
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
+            $varNops[] = $nop;
+        }
+
+        $stmts = array_merge($varNops, $this->simplePhpParser->parse($phpCode));
+
+        return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
+    }
+
+    /**
      * @param NodeVisitorAbstract[] $nodeVisitors
      * @return Node[]
      * @throws ParserError
@@ -388,6 +533,17 @@ final class BladeToPHPCompiler
     {
         /** @throws ParserError */
         $stmts = $this->simplePhpParser->parse($phpCode);
+
+        return $this->traverseNodesWithVisitors($stmts, $nodeVisitors);
+    }
+
+    /**
+     * @param Node[] $stmts
+     * @param NodeVisitorAbstract[] $nodeVisitors
+     * @return Node[]
+     */
+    private function traverseNodesWithVisitors(array $stmts, array $nodeVisitors): array
+    {
         $nodeTraverser = new NodeTraverser();
         foreach ($nodeVisitors as $nodeVisitor) {
             $nodeTraverser->addVisitor($nodeVisitor);
