@@ -26,17 +26,43 @@ parameters:
     bootstrapFiles:
         - ../bootstrap.php
 
-    # Error identifiers that are noise in generated template code. The /*
-    # makes this a fnmatch pattern: PHP's fnmatch * crosses directory
-    # separators, and patterns skip the existence check that a bare directory
-    # path would fail before the bootstrap has created it.
+    # Noise from constructs Blade emits in compiled templates that a template
+    # author cannot act on. Each entry is pinned to the exact message as well
+    # as the identifier and the compiled-view path, so a same-identifier error
+    # with any other wording still surfaces. The /* makes the path an fnmatch
+    # pattern: PHP's fnmatch * crosses directory separators, and patterns skip
+    # the existence check that a bare directory path would fail before the
+    # bootstrap has created it.
     ignoreErrors:
+        # A component body is wrapped in a closure that Blade forwards the whole
+        # component scope into ($errors, $__env, $app, $attributes, $componentName,
+        # ...), of which most bodies read only a few.
         -
+            message: '#^Anonymous function has an unused use \$[^ ]+\.$#'
             identifier: closure.unusedUse
             path: %bladestan.compiledViewPath%/*
             reportUnmatched: false
+        # @error('field') compiles to `$__errorArgs[1] ?? 'default'`, reading the
+        # optional error-bag slot that a single-argument @error never sets.
         -
+            message: '#^Offset 1 on array\{''[^'']*''\} on left side of \?\? does not exist\.$#'
             identifier: nullCoalesce.offset
+            path: %bladestan.compiledViewPath%/*
+            reportUnmatched: false
+        # Blade compiles @props default handling to `$prop = $prop ?? $default`,
+        # whose left side is never nullable once the prop has been extracted
+        # from the attribute bag.
+        -
+            message: '#^Expression on left side of \?\? is not nullable\.$#'
+            identifier: nullCoalesce.expr
+            path: %bladestan.compiledViewPath%/*
+            reportUnmatched: false
+        # Blade compiles a prop list without defaults (@props(['a', 'b'])) to a
+        # foreach over array_filter([...], 'is_string', ARRAY_FILTER_USE_KEY),
+        # whose integer keys always leave an empty array.
+        -
+            message: '#^Empty array passed to foreach\.$#'
+            identifier: foreach.emptyArray
             path: %bladestan.compiledViewPath%/*
             reportUnmatched: false
 

@@ -8,5 +8,8 @@ ignore-hidden = false
 "Symplify" = "Symplify"
 "symplify" = "symplify"
 
+# Deliberate typo used in the README as an example of a mistake Bladestan reports.
+"emial" = "emial"
+
 # Typos
 "Github" = "GitHub"

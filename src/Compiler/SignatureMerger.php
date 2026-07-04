@@ -139,24 +139,25 @@ final class SignatureMerger
         $allVarNames = array_unique(array_merge(array_keys($child->variables), array_keys($parent->variables)));
 
         foreach ($allVarNames as $allVarName) {
-            $childType = $child->variables[$allVarName] ?? null;
-            $parentType = $parent->variables[$allVarName] ?? null;
+            $childHasType = array_key_exists($allVarName, $child->variables);
+            $parentHasType = array_key_exists($allVarName, $parent->variables);
 
-            if ($childType !== null && $parentType === null) {
+            if ($childHasType && ! $parentHasType) {
                 // Only in child
-                $merged[$allVarName] = $childType;
+                $merged[$allVarName] = $child->variables[$allVarName];
                 continue;
             }
 
-            if ($childType === null && $parentType !== null) {
+            if (! $childHasType && $parentHasType) {
                 // Only in parent
-                $merged[$allVarName] = $parentType;
+                $merged[$allVarName] = $parent->variables[$allVarName];
                 continue;
             }
+
+            $childType = $child->variables[$allVarName];
+            $parentType = $parent->variables[$allVarName];
 
             // In both — apply covariance check
-            assert($childType !== null && $parentType !== null);
-
             if ($childType === $parentType) {
                 // Identical type strings — no conflict
                 $merged[$allVarName] = $childType;
