@@ -483,16 +483,16 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * Decorate compiled PHP with @var annotations from a TemplateSignature
-     * (string-based types) plus component-body scope, view composer data, and
-     * shared variables (all PHPStan Type objects).
+     * Decorate compiled PHP with @var annotations from a TemplateSignature and
+     * component-body scope (both PHPDoc type strings), plus view composer data
+     * and shared variables (PHPStan Type objects).
      *
      * Precedence, highest first: the signature (the author's explicit contract),
      * then the component scope Blade injects, then view composer data, then
      * shared variables. A name declared by a higher source is not re-emitted.
      *
      * @param array<string, Type> $viewData Additional types from view composers
-     * @param array<string, Type> $componentScope Variables Blade adds to a component body
+     * @param array<string, string> $componentScope Variables Blade adds to a component body
      */
     private function decoratePhpContentStandalone(
         string $phpCode,
@@ -501,19 +501,32 @@ final class BladeToPHPCompiler
         array $componentScope,
     ): string {
         $varNops = [];
+        $declared = [];
 
         // Emit @var from signature (string-based)
         foreach ($templateSignature->variables as $name => $type) {
             $nop = new Nop();
             $nop->setDocComment(new Doc("/** @var {$type} \${$name} */"));
             $varNops[] = $nop;
+            $declared[$name] = true;
         }
 
-        // Component scope wins over view composer data on conflict (a composer
-        // does not define $slot); neither overrides the explicit signature.
-        $extra = $componentScope + $viewData;
-        foreach ($extra as $name => $type) {
-            if (isset($templateSignature->variables[$name])) {
+        // Emit @var from component-body scope (string-based). The signature wins,
+        // so a variable it declares is not re-emitted.
+        foreach ($componentScope as $name => $type) {
+            if (isset($declared[$name])) {
+                continue;
+            }
+
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$type} \${$name} */"));
+            $varNops[] = $nop;
+            $declared[$name] = true;
+        }
+
+        // Emit @var from view composer data (skip if already declared)
+        foreach ($viewData as $name => $type) {
+            if (isset($declared[$name])) {
                 continue;
             }
 
@@ -521,12 +534,12 @@ final class BladeToPHPCompiler
             $nop = new Nop();
             $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
             $varNops[] = $nop;
+            $declared[$name] = true;
         }
 
         // Emit @var from shared variables (skip if already declared)
-        $alreadyDeclared = array_merge(array_keys($templateSignature->variables), array_keys($extra));
         foreach ($this->shared as $name => $type) {
-            if (in_array($name, $alreadyDeclared, true)) {
+            if (isset($declared[$name])) {
                 continue;
             }
 
@@ -534,6 +547,7 @@ final class BladeToPHPCompiler
             $nop = new Nop();
             $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
             $varNops[] = $nop;
+            $declared[$name] = true;
         }
 
         $stmts = array_merge($varNops, $this->simplePhpParser->parse($phpCode));

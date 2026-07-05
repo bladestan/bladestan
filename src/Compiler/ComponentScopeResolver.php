@@ -5,17 +5,22 @@ declare(strict_types=1);
 namespace Bladestan\Compiler;
 
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\Str;
 use Illuminate\View\Compilers\BladeCompiler;
+use Illuminate\View\Component;
 use Illuminate\View\ComponentAttributeBag;
 use Illuminate\View\ComponentSlot;
-use PHPStan\Type\ArrayType;
-use PHPStan\Type\BooleanType;
-use PHPStan\Type\FloatType;
-use PHPStan\Type\IntegerType;
-use PHPStan\Type\MixedType;
-use PHPStan\Type\ObjectType;
-use PHPStan\Type\StringType;
-use PHPStan\Type\Type;
+use Livewire\Component as LivewireComponent;
+use ReflectionClass;
+use ReflectionIntersectionType;
+use ReflectionMethod;
+use ReflectionNamedType;
+use ReflectionProperty;
+use ReflectionType;
+use ReflectionUnionType;
+use Throwable;
 
 /**
  * Determines the extra variables in scope inside a component template's body,
@@ -24,15 +29,16 @@ use PHPStan\Type\Type;
  *
  * A template signature declares what a caller must pass; it says nothing about
  * the variables Blade injects into a component body. Those are `$attributes`,
- * `$slot`, `$componentName`, and every `@props` variable (present via its
- * default or the attributes bag). Without them, a component body that reads
- * `{{ $slot }}` or `{{ $attributes->merge(...) }}` reports undefined variables
- * that no signature could fix.
+ * `$slot`, `$componentName`, every `@props` variable, and (for a class
+ * component) the class's public properties and zero-argument public methods,
+ * which Blade merges into the view. Without them, a component body that reads
+ * `{{ $slot }}`, `{{ $attributes->merge(...) }}`, or `{{ $order->total }}`
+ * reports undefined variables that no signature could fix.
  *
  * A template is treated as a component when it declares `@props` or its view
  * name is a component view (the `components.` convention or a registered
- * component namespace). Reflected backing-class members are not injected here;
- * they are contributed by the template's signature.
+ * component namespace). When the view resolves to a component class, its public
+ * members are added too. Types returned here are parser-safe PHPDoc strings.
  *
  * @see \Bladestan\Tests\Compiler\ComponentScopeResolverTest
  */
@@ -44,6 +50,15 @@ final class ComponentScopeResolver
      */
     private const PROPS_REGEX = '/@props\s*\(\s*(\[.*?\])\s*\)/s';
 
+    /**
+     * Component methods Blade never exposes as view variables. Framework methods
+     * declared on Component itself are excluded by their declaring class; these
+     * are the ones a component commonly overrides, so they need naming.
+     *
+     * @var list<string>
+     */
+    private const IGNORED_METHODS = ['render', 'resolveView', 'shouldRender', 'view', 'data', 'withName', 'withAttributes'];
+
     public function __construct(
         private readonly BladeCompiler $bladeCompiler,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
@@ -51,28 +66,42 @@ final class ComponentScopeResolver
     }
 
     /**
-     * The variables Blade adds to a component body, or an empty array when the
-     * template is not a component.
+     * The variables Blade adds to a component body as PHPDoc type strings, or an
+     * empty array when the template is not a component.
      *
-     * @return array<string, Type>
+     * @return array<string, string>
      */
     public function resolve(string $viewName, string $bladeContent): array
     {
+        // Livewire component views get $this, $_instance, and $__livewire (all
+        // the component instance) plus the component's public properties, which
+        // Livewire exposes to the view as plain variables.
+        $livewireClass = $this->resolveLivewireClass($viewName);
+        if ($livewireClass !== null) {
+            return $this->livewireScope($livewireClass);
+        }
+
         $props = $this->extractProps($bladeContent);
         if ($props === null && ! $this->isComponentView($viewName)) {
             return [];
         }
 
-        $scope = [
-            'slot' => new ObjectType(ComponentSlot::class),
-            'componentName' => new StringType(),
-        ];
+        // Reflected class members are the lowest priority: an explicit @props
+        // entry (below) or the template's signature (in the compiler) wins.
+        $scope = [];
+        $backingClass = $this->resolveBackingClass($viewName);
+        if ($backingClass !== null) {
+            $scope = $this->reflectMembers($backingClass);
+        }
+
+        $scope['slot'] = '\\' . ComponentSlot::class;
+        $scope['componentName'] = 'string';
 
         // A compiled `@props` block already defines `$attributes` (it opens with
         // `$attributes ??= new ComponentAttributeBag()`), so only declare it for
         // component bodies without `@props`.
         if ($props === null) {
-            $scope['attributes'] = new ObjectType(ComponentAttributeBag::class);
+            $scope['attributes'] = '\\' . ComponentAttributeBag::class;
 
             return $scope;
         }
@@ -148,25 +177,291 @@ final class ComponentScopeResolver
     }
 
     /**
+     * Resolve the component class backing a view, mirroring Laravel's own
+     * resolution over the registered class-component namespaces and the default
+     * `App\View\Components` convention, so casing matches the class on disk.
+     *
+     * @return class-string<Component>|null
+     */
+    private function resolveBackingClass(string $viewName): ?string
+    {
+        $classNamespaces = $this->bladeCompiler->getClassComponentNamespaces();
+
+        // A class-component namespace addressed directly (backoffice::orders.row).
+        foreach ($classNamespaces as $prefix => $namespace) {
+            if (is_string($prefix) && is_string($namespace) && str_starts_with($viewName, $prefix . '::')) {
+                $class = $this->buildComponentClass($namespace, substr($viewName, strlen($prefix) + 2));
+                if ($class !== null) {
+                    return $class;
+                }
+            }
+        }
+
+        // A view under a registered anonymous-component directory, resolved to
+        // the class namespace sharing its prefix (Blade::componentNamespace).
+        foreach ($this->bladeCompiler->getAnonymousComponentNamespaces() as $prefix => $directory) {
+            if (! is_string($prefix)) {
+                continue;
+            }
+
+            if (! is_string($directory)) {
+                continue;
+            }
+
+            $classNamespace = $classNamespaces[$prefix] ?? null;
+            if (! is_string($classNamespace)) {
+                continue;
+            }
+
+            $rest = $this->viewNameUnderNamespace($viewName, $prefix, $directory);
+            if ($rest === null) {
+                continue;
+            }
+
+            $class = $this->buildComponentClass($classNamespace, $rest);
+            if ($class !== null) {
+                return $class;
+            }
+        }
+
+        // Default convention: components.alert -> App\View\Components\Alert.
+        if (str_starts_with($viewName, 'components.')) {
+            return $this->buildComponentClass(
+                $this->applicationNamespace() . 'View\\Components',
+                substr($viewName, strlen('components.')),
+            );
+        }
+
+        return null;
+    }
+
+    private function viewNameUnderNamespace(string $viewName, string $prefix, string $directory): ?string
+    {
+        if (str_starts_with($viewName, $prefix . '::')) {
+            return substr($viewName, strlen($prefix) + 2);
+        }
+
+        $directoryPrefix = str_replace('/', '.', trim($directory, '/')) . '.';
+        if ($directoryPrefix !== '.' && str_starts_with($viewName, $directoryPrefix)) {
+            return substr($viewName, strlen($directoryPrefix));
+        }
+
+        return null;
+    }
+
+    /**
+     * @template T of object
+     * @param class-string<T> $baseClass
+     * @return class-string<T>|null
+     */
+    private function buildComponentClass(string $namespace, string $componentName, string $baseClass = Component::class): ?string
+    {
+        $pieces = array_map(
+            static fn (string $piece): string => ucfirst(Str::camel($piece)),
+            explode('.', $componentName),
+        );
+        $class = trim($namespace, '\\') . '\\' . implode('\\', $pieces);
+
+        if (class_exists($class) && is_subclass_of($class, $baseClass)) {
+            /** @var class-string<T> $class */
+            return $class;
+        }
+
+        return null;
+    }
+
+    /**
+     * Resolve the Livewire component class backing a view, using Livewire's
+     * class-namespace convention (a `livewire.create-refund` view maps to
+     * `App\Livewire\CreateRefund`). A component with a custom render() pointing
+     * template's signature for those.
+     *
+     * @return class-string<LivewireComponent>|null
+     */
+    private function resolveLivewireClass(string $viewName): ?string
+    {
+        if (! class_exists(LivewireComponent::class) || ! str_starts_with($viewName, 'livewire.')) {
+            return null;
+        }
+
+        return $this->buildComponentClass(
+            $this->livewireClassNamespace(),
+            substr($viewName, strlen('livewire.')),
+            LivewireComponent::class,
+        );
+    }
+
+    /**
+     * @param class-string<LivewireComponent> $class
+     * @return array<string, string>
+     */
+    private function livewireScope(string $class): array
+    {
+        // Public methods are Livewire actions (wire:click), not view variables;
+        // $this->method() resolves through the typed $this instead.
+        $scope = $this->reflectMembers($class, LivewireComponent::class, includeMethods: false);
+
+        $scope['this'] = '\\' . $class;
+        $scope['_instance'] = '\\' . $class;
+        $scope['__livewire'] = '\\' . $class;
+
+        return $scope;
+    }
+
+    private function livewireClassNamespace(): string
+    {
+        try {
+            $namespace = Container::getInstance()
+                ->make('config')
+                ->get('livewire.class_namespace');
+
+            return is_string($namespace) ? $namespace : 'App\\Livewire';
+        } catch (Throwable) {
+            return 'App\\Livewire';
+        }
+    }
+
+    private function applicationNamespace(): string
+    {
+        try {
+            return Container::getInstance()
+                ->make(Application::class)
+                ->getNamespace();
+        } catch (Throwable) {
+            return 'App\\';
+        }
+    }
+
+    /**
+     * The public members a component exposes to its view: public properties,
+     * and (for Blade components) public zero-argument methods as closures.
+     * Members declared on the framework base class are skipped.
+     *
+     * @param class-string $class
+     * @param class-string $frameworkBase
+     * @return array<string, string>
+     */
+    private function reflectMembers(string $class, string $frameworkBase = Component::class, bool $includeMethods = true): array
+    {
+        // The class is a verified class-string (buildComponentClass checked
+        // class_exists), so ReflectionClass cannot fail to construct it.
+        $reflectionClass = new ReflectionClass($class);
+
+        $members = [];
+
+        foreach ($reflectionClass->getProperties(ReflectionProperty::IS_PUBLIC) as $reflectionProperty) {
+            if ($reflectionProperty->isStatic()) {
+                continue;
+            }
+
+            if ($this->isFrameworkMember($reflectionProperty->getDeclaringClass()->getName(), $frameworkBase)) {
+                continue;
+            }
+
+            $members[$reflectionProperty->getName()] = $this->typeToString($reflectionProperty->getType());
+        }
+
+        if (! $includeMethods) {
+            return $members;
+        }
+
+        foreach ($reflectionClass->getMethods(ReflectionMethod::IS_PUBLIC) as $reflectionMethod) {
+            if ($reflectionMethod->isStatic()) {
+                continue;
+            }
+
+            if ($reflectionMethod->isAbstract()) {
+                continue;
+            }
+
+            if ($reflectionMethod->getNumberOfRequiredParameters() > 0) {
+                continue;
+            }
+
+            $name = $reflectionMethod->getName();
+            if (str_starts_with($name, '__')) {
+                continue;
+            }
+
+            if (in_array($name, self::IGNORED_METHODS, true)) {
+                continue;
+            }
+
+            if ($this->isFrameworkMember($reflectionMethod->getDeclaringClass()->getName(), $frameworkBase)) {
+                continue;
+            }
+
+            $members[$name] = '\Closure(): ' . $this->typeToString($reflectionMethod->getReturnType());
+        }
+
+        return $members;
+    }
+
+    /**
+     * A member declared on the framework base class (or an ancestor of it) is
+     * framework plumbing, not something the component exposes as a view variable.
+     *
+     * @param class-string $frameworkBase
+     */
+    private function isFrameworkMember(string $declaringClass, string $frameworkBase): bool
+    {
+        return $declaringClass === $frameworkBase || is_subclass_of($frameworkBase, $declaringClass);
+    }
+
+    private function typeToString(?ReflectionType $reflectionType): string
+    {
+        if ($reflectionType instanceof ReflectionNamedType) {
+            $name = $reflectionType->getName();
+            if ($name === 'mixed' || $name === 'null') {
+                return $name;
+            }
+
+            if (in_array($name, ['self', 'static', 'parent'], true)) {
+                return 'object';
+            }
+
+            $typeString = $reflectionType->isBuiltin() ? $name : '\\' . ltrim($name, '\\');
+
+            return $reflectionType->allowsNull() ? '?' . $typeString : $typeString;
+        }
+
+        if ($reflectionType instanceof ReflectionUnionType) {
+            return implode('|', array_map(
+                fn (ReflectionType $reflectionType): string => ltrim($this->typeToString($reflectionType), '?'),
+                $reflectionType->getTypes(),
+            ));
+        }
+
+        if ($reflectionType instanceof ReflectionIntersectionType) {
+            return implode('&', array_map(
+                fn (ReflectionType $reflectionType): string => $this->typeToString($reflectionType),
+                $reflectionType->getTypes(),
+            ));
+        }
+
+        return 'mixed';
+    }
+
+    /**
      * Infer a general type from a prop's default expression. Defaults are
      * literals in the common case; anything else (a function call, a constant)
      * is left as mixed, exactly as an untyped parameter would be.
      */
-    private function typeFromDefaultExpression(?string $defaultExpression): Type
+    private function typeFromDefaultExpression(?string $defaultExpression): string
     {
         if ($defaultExpression === null) {
-            return new MixedType();
+            return 'mixed';
         }
 
         $expression = trim($defaultExpression);
 
         return match (true) {
-            preg_match('/^([\'"]).*\1$/s', $expression) === 1 => new StringType(),
-            preg_match('/^-?\d+$/', $expression) === 1 => new IntegerType(),
-            preg_match('/^-?\d*\.\d+$/', $expression) === 1 => new FloatType(),
-            preg_match('/^(true|false)$/i', $expression) === 1 => new BooleanType(),
-            preg_match('/^\[.*\]$/s', $expression) === 1, str_starts_with($expression, 'array(') => new ArrayType(new MixedType(), new MixedType()),
-            default => new MixedType(),
+            preg_match('/^([\'"]).*\1$/s', $expression) === 1 => 'string',
+            preg_match('/^-?\d+$/', $expression) === 1 => 'int',
+            preg_match('/^-?\d*\.\d+$/', $expression) === 1 => 'float',
+            preg_match('/^(true|false)$/i', $expression) === 1 => 'bool',
+            preg_match('/^\[.*\]$/s', $expression) === 1, str_starts_with($expression, 'array(') => 'array',
+            default => 'mixed',
         };
     }
 }

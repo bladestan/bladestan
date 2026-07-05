@@ -4,12 +4,11 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests\Compiler;
 
+use App\Livewire\WiredComponent;
 use Bladestan\Compiler\ComponentScopeResolver;
 use Illuminate\View\ComponentAttributeBag;
 use Illuminate\View\ComponentSlot;
 use PHPStan\Testing\PHPStanTestCase;
-use PHPStan\Type\Type;
-use PHPStan\Type\VerbosityLevel;
 
 final class ComponentScopeResolverTest extends PHPStanTestCase
 {
@@ -29,13 +28,13 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
             "@props(['type' => 'info', 'title', 'count' => 0, 'items' => [], 'open' => false])\n<div>{{ \$slot }}</div>",
         );
 
-        $this->assertSame(ComponentSlot::class, $this->describe($scope, 'slot'));
-        $this->assertSame('string', $this->describe($scope, 'componentName'));
-        $this->assertSame('string', $this->describe($scope, 'type'));
-        $this->assertSame('mixed', $this->describe($scope, 'title'));
-        $this->assertSame('int', $this->describe($scope, 'count'));
-        $this->assertSame('array', $this->describe($scope, 'items'));
-        $this->assertSame('bool', $this->describe($scope, 'open'));
+        $this->assertSame('\\' . ComponentSlot::class, $scope['slot'] ?? null);
+        $this->assertSame('string', $scope['componentName'] ?? null);
+        $this->assertSame('string', $scope['type'] ?? null);
+        $this->assertSame('mixed', $scope['title'] ?? null);
+        $this->assertSame('int', $scope['count'] ?? null);
+        $this->assertSame('array', $scope['items'] ?? null);
+        $this->assertSame('bool', $scope['open'] ?? null);
 
         // The compiled @props block defines $attributes itself, so it is not
         // re-declared here.
@@ -46,9 +45,9 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
     {
         $scope = $this->componentScopeResolver->resolve('components.card', '<div>{{ $slot }}</div>');
 
-        $this->assertSame(ComponentAttributeBag::class, $this->describe($scope, 'attributes'));
-        $this->assertSame(ComponentSlot::class, $this->describe($scope, 'slot'));
-        $this->assertSame('string', $this->describe($scope, 'componentName'));
+        $this->assertSame('\\' . ComponentAttributeBag::class, $scope['attributes'] ?? null);
+        $this->assertSame('\\' . ComponentSlot::class, $scope['slot'] ?? null);
+        $this->assertSame('string', $scope['componentName'] ?? null);
         $this->assertArrayNotHasKey('type', $scope);
     }
 
@@ -59,14 +58,52 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         $this->assertSame([], $scope);
     }
 
+    public function testLivewireComponentViewGetsInstanceAndPublicProperties(): void
+    {
+        // livewire.wired-component resolves to App\Livewire\WiredComponent via the
+        // Livewire class-namespace convention.
+        $scope = $this->componentScopeResolver->resolve('livewire.wired-component', '<div>{{ $c }} {{ $this->c }}</div>');
+
+        // The component instance under each name Livewire exposes it as.
+        $this->assertSame('\\' . WiredComponent::class, $scope['this'] ?? null);
+        $this->assertSame('\\' . WiredComponent::class, $scope['_instance'] ?? null);
+        $this->assertSame('\\' . WiredComponent::class, $scope['__livewire'] ?? null);
+        // Public property exposed as a plain variable.
+        $this->assertSame('string', $scope['c'] ?? null);
+        // Livewire actions (public methods) are not view variables.
+        $this->assertArrayNotHasKey('mount', $scope);
+        // Not a Blade component, so no slot/attributes.
+        $this->assertArrayNotHasKey('slot', $scope);
+        $this->assertArrayNotHasKey('attributes', $scope);
+    }
+
     public function testPropsAloneMarkANonConventionViewAsAComponent(): void
     {
         // A template outside the components. convention is still a component
         // when it declares @props.
         $scope = $this->componentScopeResolver->resolve('layout.card', "@props(['heading'])\n{{ \$slot }}");
 
-        $this->assertSame('mixed', $this->describe($scope, 'heading'));
-        $this->assertSame(ComponentSlot::class, $this->describe($scope, 'slot'));
+        $this->assertSame('mixed', $scope['heading'] ?? null);
+        $this->assertSame('\\' . ComponentSlot::class, $scope['slot'] ?? null);
+    }
+
+    public function testBackingClassPublicMembersAreInjected(): void
+    {
+        // components.panel resolves to App\View\Components\Panel through the
+        // registered component namespace (see TestServiceProvider).
+        $scope = $this->componentScopeResolver->resolve('components.panel', '<div>{{ $heading }} {{ $badge() }} {{ $slot }}</div>');
+
+        // Public readonly property.
+        $this->assertSame('string', $scope['heading'] ?? null);
+        // Public zero-argument method is exposed as a closure.
+        $this->assertSame('\Closure(): string', $scope['badge'] ?? null);
+        // A method requiring an argument is not a view variable.
+        $this->assertArrayNotHasKey('format', $scope);
+        // render() and other framework methods are never exposed.
+        $this->assertArrayNotHasKey('render', $scope);
+        // Component scope is still present alongside the reflected members.
+        $this->assertSame('\\' . ComponentSlot::class, $scope['slot'] ?? null);
+        $this->assertSame('\\' . ComponentAttributeBag::class, $scope['attributes'] ?? null);
     }
 
     /**
@@ -75,15 +112,5 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
     public static function getAdditionalConfigFiles(): array
     {
         return [__DIR__ . '/../../config/extension.neon'];
-    }
-
-    /**
-     * @param array<string, Type> $scope
-     */
-    private function describe(array $scope, string $name): string
-    {
-        $this->assertArrayHasKey($name, $scope);
-
-        return $scope[$name]->describe(VerbosityLevel::typeOnly());
     }
 }

@@ -72,7 +72,7 @@ final class CompileStandaloneTest extends PHPStanTestCase
 
         // $slot, $componentName, and each @props variable are declared so the
         // body does not report them as undefined.
-        $this->assertStringContainsString('/** @var Illuminate\View\ComponentSlot $slot */', $compiled);
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentSlot $slot */', $compiled);
         $this->assertStringContainsString('/** @var string $componentName */', $compiled);
         $this->assertStringContainsString('/** @var string $type */', $compiled);
         $this->assertStringContainsString('/** @var mixed $title */', $compiled);
@@ -80,7 +80,31 @@ final class CompileStandaloneTest extends PHPStanTestCase
 
         // The compiled @props block already defines $attributes, so it is not
         // re-declared as an @var.
-        $this->assertStringNotContainsString('@var Illuminate\View\ComponentAttributeBag $attributes', $compiled);
+        $this->assertStringNotContainsString('@var \Illuminate\View\ComponentAttributeBag $attributes', $compiled);
+    }
+
+    public function testClassComponentBodyGetsReflectedMembers(): void
+    {
+        $compiled = $this->compileView('components.panel');
+
+        // A public property and a public zero-argument method (as a closure)
+        // from the backing App\View\Components\Panel are declared.
+        $this->assertStringContainsString('/** @var string $heading */', $compiled);
+        $this->assertStringContainsString('/** @var \Closure(): string $badge */', $compiled);
+        // Plus the component scope, since the template declares no @props.
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentSlot $slot */', $compiled);
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
+    }
+
+    public function testLivewireComponentBodyGetsInstanceScope(): void
+    {
+        $compiled = $this->compileView('livewire.wired-component');
+
+        // The component instance is typed under each name Livewire exposes, and
+        // its public property is a plain variable.
+        $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $this */', $compiled);
+        $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $__livewire */', $compiled);
+        $this->assertStringContainsString('/** @var string $c */', $compiled);
     }
 
     public function testNonComponentTemplateGetsNoComponentScope(): void

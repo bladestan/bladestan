@@ -146,6 +146,23 @@ Here the child narrows the layout's `?string $title` to `string`, which is allow
 
 `view('welcome', ['title' => ..., 'user' => ...])` now also reports the missing `$siteName` required by the layout.
 
+## Components
+
+Blade components are analyzed like any other template. The variables Blade makes available inside a component body are provided automatically, so you never declare them: the default slot, the attribute bag, the component name, every `@props` variable, and, for a class component, the component's public properties and methods. A prop is typed from its default value; a prop declared without a default reads as untyped until you give it a type.
+
+To type a prop, add a `@bladestan-signature` as usual. It takes precedence over the inferred types, so the body and every call site are checked against the type you declare.
+
+Livewire component views are analyzed the same way: `$this` and the component's public properties are typed from the backing class, so `{{ $this->count }}` and `{{ $someProperty }}` are checked. This works for views resolved by Livewire's naming convention. If a component renders a view under a different name, declare the instance in that view's signature and everything on it is typed:
+
+```blade
+@php
+/**
+ * @bladestan-signature
+ * @var \App\Livewire\Dashboard $this
+ */
+@endphp
+```
+
 ## Error formatter
 
 Errors from templates point directly at the `.blade.php` file with correct line numbers when using the Blade error formatter:

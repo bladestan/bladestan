@@ -65,6 +65,19 @@ parameters:
             identifier: foreach.emptyArray
             path: %bladestan.compiledViewPath%/*
             reportUnmatched: false
+        # Blade compiles @props prop extraction to a non-strict in_array($key,
+        # $propNames), which phpstan-strict-rules flags for the missing third
+        # argument. The array is Blade-built, so the author cannot make it strict.
+        -
+            message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+            path: %bladestan.compiledViewPath%/*
+            reportUnmatched: false
+        # Blade's @props block opens with `$attributes ??= new ComponentAttributeBag()`.
+        # When a signature also declares $attributes, that guard reads as redundant.
+        -
+            message: '#^Variable \$[^ ]+ on left side of \?\?= always exists and is not nullable\.$#'
+            path: %bladestan.compiledViewPath%/*
+            reportUnmatched: false
 
 rules:
     - Bladestan\Rules\ViewCallSiteRule
