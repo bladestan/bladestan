@@ -5,6 +5,7 @@ declare(strict_types=1);
 use Bladestan\Blade\PhpLineToTemplateLineResolver;
 use Bladestan\Bootstrap\TemplateCompilationBootstrap;
 use Bladestan\Compiler\BladeToPHPCompiler;
+use Bladestan\Compiler\ComponentScopeResolver;
 use Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
 use Bladestan\Compiler\LivewireTagCompiler;
 use Bladestan\Compiler\SignatureExtractor;
@@ -104,9 +105,11 @@ if (isset($app)) {
             $simplePhpParser
         );
 
+        $bladeCompiler = (new BladeCompilerFactory())->create();
+
         $bladeToPhpCompiler = new BladeToPHPCompiler(
             new Filesystem(),
-            (new BladeCompilerFactory())->create(),
+            $bladeCompiler,
             $printerStandard,
             new ValueResolver(),
             new VarDocNodeFactory(),
@@ -116,6 +119,7 @@ if (isset($app)) {
             new LivewireTagCompiler($arrayStringToArrayConverter),
             $simplePhpParser,
             $signatureExtractor,
+            new ComponentScopeResolver($bladeCompiler, $arrayStringToArrayConverter),
         );
 
         (new TemplateCompilationBootstrap(

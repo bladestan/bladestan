@@ -108,6 +108,7 @@ services:
     - Bladestan\NodeAnalyzer\ClassPropertiesResolver
     - Bladestan\NodeAnalyzer\ValueResolver
     - Bladestan\Compiler\BladeToPHPCompiler
+    - Bladestan\Compiler\ComponentScopeResolver
     - Bladestan\Compiler\SignatureExtractor
     - Bladestan\Compiler\SignatureMerger
     - Bladestan\Compiler\TypeStringValidator

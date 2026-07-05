@@ -115,6 +115,7 @@ final class BladeToPHPCompiler
         private readonly LivewireTagCompiler $livewireTagCompiler,
         private readonly SimplePhpParser $simplePhpParser,
         private readonly SignatureExtractor $signatureExtractor,
+        private readonly ComponentScopeResolver $componentScopeResolver,
     ) {
         $this->viewFactory = resolve(ViewFactory::class);
         $errorClass = ViewErrorBag::class;
@@ -188,6 +189,11 @@ final class BladeToPHPCompiler
         // at the child's call sites via signature merging.
         $fileContents = $this->signatureExtractor->stripExtends($fileContents);
 
+        // Variables Blade injects into a component body ($attributes, $slot,
+        // $componentName, @props). Read before compilation, since compiling
+        // consumes the @props directive. Empty for non-component templates.
+        $componentScope = $this->componentScopeResolver->resolve($viewName, $fileContents);
+
         // Get view composer data
         $viewData = $this->getViewData($viewName);
 
@@ -199,7 +205,7 @@ final class BladeToPHPCompiler
         $phpCode = $this->bubbleUpImports($phpCode);
 
         // Decorate with @var annotations from signature + shared variables
-        $phpCode = $this->decoratePhpContentStandalone($phpCode, $templateSignature, $viewData);
+        $phpCode = $this->decoratePhpContentStandalone($phpCode, $templateSignature, $viewData, $componentScope);
 
         // Add source tracking header after the <?php tag
         $sourceHeader = "// @bladestan-source: {$resolvedTemplateFilePath}";
@@ -478,14 +484,21 @@ final class BladeToPHPCompiler
 
     /**
      * Decorate compiled PHP with @var annotations from a TemplateSignature
-     * (string-based types) plus shared variables (PHPStan Type objects).
+     * (string-based types) plus component-body scope, view composer data, and
+     * shared variables (all PHPStan Type objects).
+     *
+     * Precedence, highest first: the signature (the author's explicit contract),
+     * then the component scope Blade injects, then view composer data, then
+     * shared variables. A name declared by a higher source is not re-emitted.
      *
      * @param array<string, Type> $viewData Additional types from view composers
+     * @param array<string, Type> $componentScope Variables Blade adds to a component body
      */
     private function decoratePhpContentStandalone(
         string $phpCode,
         TemplateSignature $templateSignature,
         array $viewData,
+        array $componentScope,
     ): string {
         $varNops = [];
 
@@ -496,8 +509,10 @@ final class BladeToPHPCompiler
             $varNops[] = $nop;
         }
 
-        // Emit @var from view composer data (PHPStan Type objects, skip if in signature)
-        foreach ($viewData as $name => $type) {
+        // Component scope wins over view composer data on conflict (a composer
+        // does not define $slot); neither overrides the explicit signature.
+        $extra = $componentScope + $viewData;
+        foreach ($extra as $name => $type) {
             if (isset($templateSignature->variables[$name])) {
                 continue;
             }
@@ -509,7 +524,7 @@ final class BladeToPHPCompiler
         }
 
         // Emit @var from shared variables (skip if already declared)
-        $alreadyDeclared = array_merge(array_keys($templateSignature->variables), array_keys($viewData));
+        $alreadyDeclared = array_merge(array_keys($templateSignature->variables), array_keys($extra));
         foreach ($this->shared as $name => $type) {
             if (in_array($name, $alreadyDeclared, true)) {
                 continue;

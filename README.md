@@ -77,7 +77,7 @@ Things to know:
 
 ## Generating signatures
 
-On an existing project the fastest way to sign templates is to generate the signatures from the types your controllers already pass:
+On an existing project the fastest way to add signatures to templates is to generate them from the types your controllers already pass:
 
 ```bash
 php artisan bladestan:generate-signatures
