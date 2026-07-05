@@ -69,6 +69,7 @@ From the same annotation you get template body analysis (a typo like `{{ $user->
 Things to know:
 
 - **All declared variables are required.** There is no "optional". If a variable may be absent, declare it nullable (`?Type`) and pass `null` explicitly.
+- **Write valid PHPDoc types.** Some forms printed by `dumpType` are not valid to write as a type, such as a template placeholder (`TModel (class ..., argument)`) or an accessory type (`hasOffsetValue(...)`); simplify these to a concrete type. A type Bladestan cannot parse is reported against the template that declares it and never affects any other result.
 - **One signature per template.**
 - **Migration is one line.** If you already keep `@var` docblocks in templates for autocomplete, Bladestan treats the first docblock before any template code as an implicit signature; adding the `@bladestan-signature` line just makes it explicit.
 

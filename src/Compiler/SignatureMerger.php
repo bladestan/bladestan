@@ -50,6 +50,7 @@ final class SignatureMerger
         private readonly SignatureExtractor $signatureExtractor,
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly TypeStringResolver $typeStringResolver,
+        private readonly TypeStringValidator $typeStringValidator,
     ) {
     }
 
@@ -167,6 +168,15 @@ final class SignatureMerger
             $childParsed = $this->parseTypeString($childType);
             $parentParsed = $this->parseTypeString($parentType);
 
+            if (!$childParsed instanceof Type || !$parentParsed instanceof Type) {
+                // One side is not a valid PHPDoc type. The covariance check is
+                // impossible, but this must not abort the run — keep the
+                // child's declaration and let ViewCallSiteRule report the
+                // invalid type at the call site.
+                $merged[$allVarName] = $childType;
+                continue;
+            }
+
             $childIsSubtype = $parentParsed->isSuperTypeOf($childParsed)
                 ->yes();
             $parentIsSubtype = $childParsed->isSuperTypeOf($parentParsed)
@@ -261,13 +271,20 @@ final class SignatureMerger
     }
 
     /**
-     * Parse a PHPDoc type string into a PHPStan Type object.
+     * Parse a PHPDoc type string into a PHPStan Type object, or null when the
+     * string is not a valid PHPDoc type.
      *
-     * Uses TypeStringResolver which does not require a file context,
-     * unlike FileTypeMapper which cannot resolve types for .blade.php files.
+     * Uses TypeStringResolver which does not require a file context, unlike
+     * FileTypeMapper which cannot resolve types for .blade.php files. The
+     * resolver throws on malformed types; that must never abort the run, so
+     * the failure is contained and reported at the call site instead.
      */
-    private function parseTypeString(string $typeString): Type
+    private function parseTypeString(string $typeString): ?Type
     {
+        if (! $this->typeStringValidator->isValid($typeString)) {
+            return null;
+        }
+
         return $this->typeStringResolver->resolve($typeString);
     }
 }

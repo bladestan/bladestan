@@ -110,6 +110,7 @@ services:
     - Bladestan\Compiler\BladeToPHPCompiler
     - Bladestan\Compiler\SignatureExtractor
     - Bladestan\Compiler\SignatureMerger
+    - Bladestan\Compiler\TypeStringValidator
     - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
     - Bladestan\PhpParser\ArrayStringToArrayConverter
     - Bladestan\Discovery\TemplateDiscovery

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bladestan\Rules;
 
 use Bladestan\Compiler\SignatureMerger;
+use Bladestan\Compiler\TypeStringValidator;
 use Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
 use Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
 use Bladestan\NodeAnalyzer\MailablesContentMatcher;
@@ -41,9 +42,10 @@ final class ViewCallSiteRule implements Rule
 {
     /**
      * Memoized parsed type strings — the same signature is validated at every
-     * call site of a template.
+     * call site of a template. A null entry marks a type PHPStan's PHPDoc
+     * parser rejects, so the failed parse is attempted only once.
      *
-     * @var array<string, Type>
+     * @var array<string, Type|null>
      */
     private array $resolvedTypeCache = [];
 
@@ -54,6 +56,7 @@ final class ViewCallSiteRule implements Rule
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly SignatureMerger $signatureMerger,
         private readonly TypeStringResolver $typeStringResolver,
+        private readonly TypeStringValidator $typeStringValidator,
     ) {
     }
 
@@ -130,6 +133,28 @@ final class ViewCallSiteRule implements Rule
             return $errors;
         }
 
+        // A single unparseable type must never abort the run. Report each one
+        // as a localized error and drop it from the checks below, so the rest
+        // of the signature (and every other call site) is still validated.
+        $invalidTypes = [];
+        foreach ($mergedSignature->variables as $varName => $expectedTypeString) {
+            if ($this->resolveTypeString($expectedTypeString) instanceof Type) {
+                continue;
+            }
+
+            $invalidTypes[$varName] = true;
+            $errors[] = RuleErrorBuilder::message(
+                sprintf(
+                    'Template %s declares $%s as %s, which is not a valid PHPDoc type.',
+                    $renderTemplateWithParameters->templateName,
+                    $varName,
+                    $expectedTypeString,
+                ),
+            )
+                ->identifier('bladestan.invalidSignatureType')
+                ->build();
+        }
+
         $providedParams = $renderTemplateWithParameters->parametersArray;
 
         // Validate: check types of provided variables
@@ -141,8 +166,14 @@ final class ViewCallSiteRule implements Rule
                 continue;
             }
 
+            if (isset($invalidTypes[$varName])) {
+                // Already reported as an invalid type — don't check against it.
+                continue;
+            }
+
             // Parse the expected type string into a PHPStan Type
             $expectedType = $this->resolveTypeString($expectedTypeString);
+            assert($expectedType instanceof Type);
 
             // Check if the provided type is accepted by the expected type
             if (! $expectedType->isSuperTypeOf($providedType)->yes()) {
@@ -165,7 +196,9 @@ final class ViewCallSiteRule implements Rule
             if (isset($providedParams[$varName])) {
                 continue;
             }
-
+            if (isset($invalidTypes[$varName])) {
+                continue;
+            }
             // Don't report shared/framework variables as missing
             // These are automatically available in all templates at runtime
             if ($this->isSharedVariable($varName)) {
@@ -180,6 +213,7 @@ final class ViewCallSiteRule implements Rule
             if ($renderTemplateWithParameters->forwardsScope && $scope->hasVariableType($varName)->yes()) {
                 $scopeType = $scope->getVariableType($varName);
                 $expectedType = $this->resolveTypeString($expectedTypeString);
+                assert($expectedType instanceof Type);
 
                 if (! $expectedType->isSuperTypeOf($scopeType)->yes()) {
                     $errors[] = RuleErrorBuilder::message(
@@ -214,14 +248,27 @@ final class ViewCallSiteRule implements Rule
     }
 
     /**
-     * Parse a PHPDoc type string into a PHPStan Type object.
+     * Parse a PHPDoc type string into a PHPStan Type object, or null when the
+     * string is not a valid PHPDoc type.
      *
-     * Uses TypeStringResolver which does not require a file context,
-     * unlike FileTypeMapper which cannot resolve types for .blade.php files.
+     * Uses TypeStringResolver which does not require a file context, unlike
+     * FileTypeMapper which cannot resolve types for .blade.php files. The
+     * resolver throws on malformed types (e.g. a parenthesized union copied
+     * from dumpType output); a signature author's mistake must never abort the
+     * whole analysis, so the failure is contained here and surfaced as a
+     * localized bladestan.invalidSignatureType error at the call site.
      */
-    private function resolveTypeString(string $typeString): Type
+    private function resolveTypeString(string $typeString): ?Type
     {
-        return $this->resolvedTypeCache[$typeString] ??= $this->typeStringResolver->resolve($typeString);
+        if (array_key_exists($typeString, $this->resolvedTypeCache)) {
+            return $this->resolvedTypeCache[$typeString];
+        }
+
+        if (! $this->typeStringValidator->isValid($typeString)) {
+            return $this->resolvedTypeCache[$typeString] = null;
+        }
+
+        return $this->resolvedTypeCache[$typeString] = $this->typeStringResolver->resolve($typeString);
     }
 
     /**
