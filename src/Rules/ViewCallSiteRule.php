@@ -196,9 +196,11 @@ final class ViewCallSiteRule implements Rule
             if (isset($providedParams[$varName])) {
                 continue;
             }
+
             if (isset($invalidTypes[$varName])) {
                 continue;
             }
+
             // Don't report shared/framework variables as missing
             // These are automatically available in all templates at runtime
             if ($this->isSharedVariable($varName)) {

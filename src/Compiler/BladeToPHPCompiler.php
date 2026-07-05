@@ -47,10 +47,12 @@ use Throwable;
 final class BladeToPHPCompiler
 {
     /**
-     * Version of the compiled standalone output format. Bump to invalidate
-     * all incrementally compiled templates when the generated PHP changes.
+     * Version of the compiled standalone output format. Bump to invalidate all
+     * incrementally compiled templates when the generated PHP or the on-disk
+     * output layout changes, so a stale tree from an older scheme is wiped
+     * instead of leaving orphans the per-view prune cannot reach.
      */
-    private const COMPILED_OUTPUT_VERSION = 2;
+    private const COMPILED_OUTPUT_VERSION = 3;
 
     /**
      * @see https://regex101.com/r/Fo7sHW/1

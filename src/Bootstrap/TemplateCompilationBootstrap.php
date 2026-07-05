@@ -27,6 +27,17 @@ final class TemplateCompilationBootstrap
 {
     private const MANIFEST_FILE = 'bladestan-manifest.json';
 
+    /**
+     * All compiled templates live under this segment. Templates keep their view
+     * hierarchy for readability, but a view named `app.*` would otherwise
+     * compile straight to `.bladestan/app/…`, where a user's path-scoped rule
+     * (for example one that forbids `echo` under `app/`) would flag generated
+     * code full of echoes. Nesting everything under one clearly generated
+     * segment keeps the compiled tree from impersonating a source directory and
+     * gives rule authors a single path to exclude.
+     */
+    private const OUTPUT_ROOT = '__templates__';
+
     public function __construct(
         private readonly TemplateDiscovery $templateDiscovery,
         private readonly BladeToPHPCompiler $bladeToPHPCompiler,
@@ -147,20 +158,21 @@ final class TemplateCompilationBootstrap
     }
 
     /**
-     * Build a path-safe output filename that preserves the view hierarchy:
-     *   'welcome'         → 'welcome.php'
-     *   'layouts.app'     → 'layouts/app.php'
-     *   'Test::some.view' → '__ns__Test/some/view.php'
+     * Build a path-safe output filename that preserves the view hierarchy under
+     * the generated-output root:
+     *   'welcome'         → '__templates__/welcome.php'
+     *   'layouts.app'     → '__templates__/layouts/app.php'
+     *   'Test::some.view' → '__templates__/__ns__Test/some/view.php'
      */
     private function relativeOutputPath(string $viewName): string
     {
         if (str_contains($viewName, '::')) {
             [$namespace, $name] = explode('::', $viewName, 2);
 
-            return '__ns__' . $namespace . '/' . str_replace('.', '/', $name) . '.php';
+            return self::OUTPUT_ROOT . '/__ns__' . $namespace . '/' . str_replace('.', '/', $name) . '.php';
         }
 
-        return str_replace('.', '/', $viewName) . '.php';
+        return self::OUTPUT_ROOT . '/' . str_replace('.', '/', $viewName) . '.php';
     }
 
     /**

@@ -40,6 +40,8 @@ That's it. On each PHPStan run Bladestan recompiles only the templates that chan
 
 > **Note:** the `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
 
+Compiled templates are written under `.bladestan/__templates__/`.
+
 ## Declare template signatures
 
 Templates declare the variables they expect with a `@bladestan-signature` docblock: standard `@var` PHPDoc that your IDE already understands for autocomplete, plus one marker line.
