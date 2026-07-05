@@ -168,7 +168,7 @@ final class SignatureMerger
             $childParsed = $this->parseTypeString($childType);
             $parentParsed = $this->parseTypeString($parentType);
 
-            if (!$childParsed instanceof Type || !$parentParsed instanceof Type) {
+            if (! $childParsed instanceof Type || ! $parentParsed instanceof Type) {
                 // One side is not a valid PHPDoc type. The covariance check is
                 // impossible, but this must not abort the run — keep the
                 // child's declaration and let ViewCallSiteRule report the

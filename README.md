@@ -75,6 +75,18 @@ Things to know:
 - **One signature per template.**
 - **Migration is one line.** If you already keep `@var` docblocks in templates for autocomplete, Bladestan treats the first docblock before any template code as an implicit signature; adding the `@bladestan-signature` line just makes it explicit.
 
+## Generating signatures
+
+On an existing project the fastest way to sign templates is to generate the signatures from the types your controllers already pass:
+
+```bash
+php artisan bladestan:generate-signatures
+```
+
+This reads the real type of each `view()`, `View::make()`, and Mailable `->markdown()` call with PHPStan and writes a `@bladestan-signature` to every template rendered from PHP that does not already have one. Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. Templates reached only through `@include` or as components may still need a signature written by hand. The command is available only when Bladestan is installed as a dev dependency.
+
+When writing signatures by hand or with an AI coding agent, the [signature guideline](docs/laravel-boost-guideline.md) captures the rules that keep the types correct and parseable.
+
 ## Call-site validation
 
 Every `view()` call (and `Mailable` content, `View::make()`, etc.) is validated against the template's signature:

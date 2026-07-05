@@ -58,7 +58,7 @@ final class TemplateCompilationBootstrap
             return;
         }
 
-        $contextHash = $this->bladeToPHPCompiler->getCompilationContextHash();
+        $contextHash = $this->contextHash();
         $manifest = $this->loadManifest();
 
         // A manifest from another project or a stale compilation context means
@@ -155,6 +155,24 @@ final class TemplateCompilationBootstrap
             $this->compiledViewPath . '/' . self::MANIFEST_FILE,
             json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) ?: '{}',
         );
+    }
+
+    /**
+     * The context hash guards whether existing compiled output can be trusted.
+     * It combines the compiler's own factors (output-format version, Laravel
+     * version, shared variables) with a hash of the installed dependencies:
+     * a `composer update` can change compiled output even when no template
+     * changed (most directly through `illuminate/view`, whose Blade compiler
+     * produces the PHP we analyze). PHPStan invalidates its own result cache on
+     * a `composer.lock` change; mirroring that here forces a full recompile so
+     * stale output from an older Blade compiler never survives.
+     */
+    private function contextHash(): string
+    {
+        $lockContents = @file_get_contents($this->projectRoot . '/composer.lock');
+        $dependencyHash = $lockContents === false ? '' : hash('xxh128', $lockContents);
+
+        return hash('xxh128', $this->bladeToPHPCompiler->getCompilationContextHash() . "\0" . $dependencyHash);
     }
 
     /**
