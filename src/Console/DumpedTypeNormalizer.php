@@ -10,7 +10,7 @@ namespace Bladestan\Console;
  *
  * `dumpType` prints constructs its own docblock parser then rejects (template
  * placeholders, accessory types, integer ranges, literal unions). Writing those
- * verbatim would make the signature unparseable, so each is simplified to the
+ * verbatim would make the signature unparsable, so each is simplified to the
  * nearest concrete type it describes. Class names are leading-slash qualified so
  * the template needs no `use` import.
  *

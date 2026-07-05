@@ -34,7 +34,7 @@ final class RenderSiteFinder
 
         // A collecting error handler keeps parse() from throwing on a file with
         // syntax errors: it returns whatever it could parse (or null), so one
-        // unparseable file never aborts the scan.
+        // unparsable file never aborts the scan.
         $statements = $parser->parse($code, new Collecting());
         if ($statements === null) {
             return [];

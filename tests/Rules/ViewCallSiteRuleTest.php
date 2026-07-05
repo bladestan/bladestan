@@ -48,7 +48,7 @@ final class ViewCallSiteRuleTest extends RuleTestCase
             ['Template extends-template requires parameter $siteName of type string, but it was not provided.', 11],
         ]];
 
-        // An unparseable type in a signature is reported as a localized error
+        // An unparsable type in a signature is reported as a localized error
         // and does not abort the run: the wrong type for $title is still caught.
         yield [__DIR__ . '/Fixture/view-call-site-invalid-signature-type.php', [
             [

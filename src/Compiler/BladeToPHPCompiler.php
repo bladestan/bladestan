@@ -52,7 +52,7 @@ final class BladeToPHPCompiler
      * output layout changes, so a stale tree from an older scheme is wiped
      * instead of leaving orphans the per-view prune cannot reach.
      */
-    private const COMPILED_OUTPUT_VERSION = 3;
+    private const COMPILED_OUTPUT_VERSION = 4;
 
     /**
      * @see https://regex101.com/r/Fo7sHW/1
@@ -305,6 +305,7 @@ final class BladeToPHPCompiler
             /** @throws InvalidArgumentException */
             $compiledBlade = $this->bladeCompiler->compileString($fileContents);
             $stmts = $this->traverseStmtsWithVisitors($compiledBlade, [
+                new RemoveLivewireCompilerArtifacts(),
                 new DeleteInlineHTML(),
                 new AddLoopVarTypeToForeachNodeVisitor(),
                 new TransformEach(),

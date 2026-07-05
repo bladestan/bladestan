@@ -133,7 +133,7 @@ final class ViewCallSiteRule implements Rule
             return $errors;
         }
 
-        // A single unparseable type must never abort the run. Report each one
+        // A single unparsable type must never abort the run. Report each one
         // as a localized error and drop it from the checks below, so the rest
         // of the signature (and every other call site) is still validated.
         $invalidTypes = [];
