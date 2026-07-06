@@ -38,7 +38,8 @@ Also add it to your `.gitignore`:
 
 That's it. On each PHPStan run Bladestan recompiles only the templates that changed, and PHPStan's result cache re-analyzes only what's affected.
 
-> **Note:** the `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
+> [!NOTE]
+> The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
 
 Compiled templates are written under `.bladestan/__templates__/`.
 
