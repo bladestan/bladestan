@@ -32,6 +32,8 @@ See [`UPGRADE.md`](UPGRADE.md) for the migration from 0.11.
 - The signature generator reports how many generated signatures carry only
   `mixed` types, so load-bearing signatures are distinguished from those that
   still need real types.
+- A signature guideline for AI coding agents, discovered automatically by
+  Laravel Boost and available to copy for any other agent.
 
 ### Changed
 

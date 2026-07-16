@@ -19,6 +19,9 @@ includes:
     - ./vendor/tomasvotruba/bladestan/config/extension.neon
 ```
 
+> [!IMPORTANT]
+> Upgrading from 0.11? Analysis is now template-centric: templates declare the variables they expect, and a one-time setup is needed. See [`UPGRADE.md`](UPGRADE.md) before your first run, and [`CHANGELOG.md`](CHANGELOG.md) for the full history.
+
 ## Configure
 
 To have your templates analyzed, add the `.bladestan` directory to your analysed paths. This is where Bladestan writes the compiled templates:
@@ -36,15 +39,13 @@ Also add it to your `.gitignore`:
 .bladestan
 ```
 
-That's it. Bladestan creates the `.bladestan` directory for you on the first run, so there is nothing to set up by hand. On each run it recompiles only the templates that changed, and PHPStan's result cache re-analyzes only what's affected.
+That's it. Bladestan creates the `.bladestan` directory for you on the first run and writes the compiled templates under `.bladestan/__templates__/`, so there is nothing to set up by hand. On each run it recompiles only the templates that changed, and PHPStan's result cache re-analyzes only what's affected.
 
 > [!NOTE]
 > The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Bladestan warns when `.bladestan` is missing from your paths so the omission is not silent; if you only want call-site validation, set `parameters.bladestan.reportUnanalysedTemplates: false` to silence it. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
 
 > [!WARNING]
 > Add `.bladestan`, not your view directory. Your `resources/views` folder holds raw `.blade.php` source, which PHPStan cannot read as PHP: at best it reports nothing useful, at worst it reports errors that have nothing to do with your templates. If a view directory ends up in `paths`, Bladestan warns you so you can remove it. Templates are always analyzed from the compiled output, never from their source.
-
-Compiled templates are written under `.bladestan/__templates__/`.
 
 ## Declare template signatures
 
@@ -87,7 +88,11 @@ On an existing project the fastest way to add signatures to templates is to gene
 php artisan bladestan:generate-signatures
 ```
 
-This reads the real type of each `view()`, `View::make()`, and Mailable `->markdown()` call with PHPStan and writes a `@bladestan-signature` to every template rendered with data from PHP that does not already have one. Partials reached through `@include` are signed too, typed from the variables the including template forwards to them. Anonymous components are scaffolded from their `@props`: each prop is typed from its default value where it has one, and left as `mixed` otherwise for you to fill in (or to leave as-is below level 9). A view rendered with no data is left alone, since it has no contract to declare. Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. The command is available only when Bladestan is installed as a dev dependency.
+This reads with PHPStan the real type passed at each render site (`view()`, `View::make()`, Mailable content) and writes a `@bladestan-signature` to every template rendered with data from PHP that does not already have one. Partials reached through `@include` are signed too, typed from the variables the including template forwards to them. Anonymous components are scaffolded from their `@props`: each prop is typed from its default value where it has one, and left as `mixed` otherwise for you to fill in (or to leave as-is below level 9). A view rendered with no data is left alone, since it has no contract to declare.
+
+When the type at a call site is itself unresolvable, the generated signature declares the variable as `mixed`. It stops the variable being reported as undefined, but checks nothing until you replace the `mixed` with a real type. The command flags each such template as it writes it and reports how many carry only `mixed` types, so you can see at a glance which signatures are load-bearing and which still need work.
+
+Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. The command is available only when Bladestan is installed as a dev dependency.
 
 In a package that has no `artisan` binary, run the command through Testbench from the package root, pointing `--path` at your source directory:
 
@@ -95,7 +100,7 @@ In a package that has no `artisan` binary, run the command through Testbench fro
 vendor/bin/testbench bladestan:generate-signatures --path=src
 ```
 
-When writing signatures by hand or with an AI coding agent, the [signature guideline](docs/laravel-boost-guideline.md) captures the rules that keep the types correct and parseable.
+When writing signatures by hand or with an AI coding agent, the [signature guideline](resources/boost/guidelines/core.blade.php) captures the rules that keep the types correct and parseable. [Laravel Boost](https://laravel.com/docs/boost) picks it up automatically on `boost:install`; for any other agent, copy the block into your project's agent guidelines.
 
 ## Call-site validation
 
@@ -193,5 +198,5 @@ Without it, template errors point at the compiled PHP under `.bladestan` instead
 
 ## Credits
 
-- [Can Vural](https://github.com/canvural) - this package is based on that, with upgrade for Laravel 10 and active maintenance
-- [All Contributors](https://github.com/TomasVotruba/bladestan/graphs/contributors)
+- [Can Vural](https://github.com/canvural), whose original package this one is based on
+- [All Contributors](https://github.com/bladestan/bladestan/graphs/contributors)

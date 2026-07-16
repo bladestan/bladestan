@@ -1,8 +1,4 @@
-# Bladestan signature guideline
-
-A short guideline for AI coding agents (Laravel Boost, Claude, Cursor, and the like) so they author Bladestan signatures from real inferred types instead of guessing. Copy the block below into your project's agent guidelines, or point your agent at this file.
-
-```md
+@verbatim
 ## Bladestan signatures
 
 Every Blade template that receives data declares a signature so PHPStan can
@@ -43,4 +39,4 @@ error.
   name, to type the instance: `@var \App\Livewire\Dashboard $this`.
 - Verify with `vendor/bin/phpstan analyse --error-format=blade`, which reports
   against the `.blade.php` file and line.
-```
+@endverbatim
