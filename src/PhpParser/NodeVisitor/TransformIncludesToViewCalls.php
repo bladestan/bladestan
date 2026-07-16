@@ -9,6 +9,7 @@ use PhpParser\Node;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
+use PhpParser\Node\Expr\ArrayItem;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\MethodCall;
 use PhpParser\Node\Expr\StaticCall;
@@ -33,7 +34,16 @@ use PhpParser\NodeVisitorAbstract;
  *
  * The resulting `view()` call is validated by `ViewCallSiteRule` against the
  * included template's signature — `@include` is a call site, exactly like a
- * `view()` call in PHP source.
+ * `view()` call in PHP source. `@includeIf`, `@includeWhen`, `@includeUnless`,
+ * and `@includeIsolated` all compile to the same `$__env->make(...)->render()`
+ * shape and are rewritten the same way.
+ *
+ * `@includeFirst(['a', 'b'], ...)` instead compiles to
+ * `$__env->first(['a', 'b'], ...)->render()`, a list of candidate views of
+ * which Blade renders the first that exists. It is validated against the last
+ * candidate: that is the guaranteed fallback the others are expected to
+ * satisfy, so checking it avoids false positives on the optional overrides
+ * ahead of it.
  *
  * Blade's implicit scope forwarding (`array_diff_key(get_defined_vars(), ...)`
  * for includes, `Arr::except(get_defined_vars(), ...)` for extends) is
@@ -64,11 +74,12 @@ final class TransformIncludesToViewCalls extends NodeVisitorAbstract
         }
 
         $make = $expr->var;
-        if (! $make instanceof MethodCall || ! $this->isEnvMake($make)) {
+        if (! $make instanceof MethodCall) {
             return null;
         }
 
-        if (! isset($make->args[0]) || ! $make->args[0] instanceof Arg) {
+        $viewArg = $this->resolveViewArg($make);
+        if (! $viewArg instanceof Arg) {
             return null;
         }
 
@@ -86,7 +97,7 @@ final class TransformIncludesToViewCalls extends NodeVisitorAbstract
             }
         }
 
-        $args = [$make->args[0], $explicitData ?? new Arg(new Array_([]))];
+        $args = [$viewArg, $explicitData ?? new Arg(new Array_([]))];
         if ($forwardsScope) {
             $args[] = new Arg(new FuncCall(new Name('get_defined_vars')));
         }
@@ -97,12 +108,39 @@ final class TransformIncludesToViewCalls extends NodeVisitorAbstract
         return $expression;
     }
 
-    private function isEnvMake(MethodCall $methodCall): bool
+    /**
+     * The view-name argument the resulting `view()` call should validate.
+     *
+     * `$__env->make(...)` (a compiled `@include` and its variants) names the
+     * view in its first argument. `$__env->first([...], ...)` (a compiled
+     * `@includeFirst`) names a list of candidates; the last is the guaranteed
+     * fallback, so that one is validated. Returns null for any other call, or
+     * for a dynamic view list that has no static last candidate.
+     */
+    private function resolveViewArg(MethodCall $methodCall): ?Arg
     {
-        return $methodCall->var instanceof Variable
-            && $methodCall->var->name === '__env'
-            && $methodCall->name instanceof Identifier
-            && $methodCall->name->name === 'make';
+        if (! $methodCall->var instanceof Variable
+            || $methodCall->var->name !== '__env'
+            || ! $methodCall->name instanceof Identifier
+        ) {
+            return null;
+        }
+
+        if (! isset($methodCall->args[0]) || ! $methodCall->args[0] instanceof Arg) {
+            return null;
+        }
+
+        if ($methodCall->name->name === 'make') {
+            return $methodCall->args[0];
+        }
+
+        if ($methodCall->name->name === 'first' && $methodCall->args[0]->value instanceof Array_) {
+            $last = end($methodCall->args[0]->value->items);
+
+            return $last instanceof ArrayItem ? new Arg($last->value) : null;
+        }
+
+        return null;
     }
 
     /**

@@ -89,6 +89,12 @@ final class GenerateBladeSignaturesCommand extends Command
         $empty = 0;
         $passes = 0;
 
+        // A signature whose every variable is `mixed` declares the inputs (so
+        // they are no longer reported as undefined) but checks none of them. It
+        // is counted separately so the author knows which of the signed
+        // templates are load-bearing and which still need real types.
+        $lowConfidence = 0;
+
         // A template's types are final once its includers are signed (an earlier
         // pass), so each is written at most once per run. This also lets `--force`
         // converge: without it, every pass would rewrite every template and the
@@ -133,7 +139,16 @@ final class GenerateBladeSignaturesCommand extends Command
 
                 $writtenThisRun[$payload['template']] = true;
                 $wrote++;
-                $this->line('  ' . ($dryRun ? 'would sign' : 'signed') . ": {$payload['view']}");
+
+                $low = $this->carriesOnlyMixedTypes($payload['variables']);
+                if ($low) {
+                    $lowConfidence++;
+                }
+
+                $this->line(
+                    '  ' . ($dryRun ? 'would sign' : 'signed') . ": {$payload['view']}"
+                    . ($low ? ' (only mixed types, needs real types)' : ''),
+                );
             }
 
             $signed += $wrote;
@@ -151,15 +166,44 @@ final class GenerateBladeSignaturesCommand extends Command
 
         $this->newLine();
         $this->info(sprintf(
-            'Done in %d pass(es). %d signed, %d component(s) scaffolded from @props, %d already-signed skipped, %d rendered with no data.',
+            'Done in %d pass(es). %d signed (%d carry only mixed types), %d component(s) scaffolded from @props, %d already-signed skipped, %d rendered with no data.',
             $passes,
             $signed,
+            $lowConfidence,
             $components,
             $skipped,
             $empty,
         ));
 
+        if ($lowConfidence > 0) {
+            $this->comment(sprintf(
+                'The %d signature(s) typed only as mixed declare their inputs but check no types; replace the mixed types with real ones to get them analysed.',
+                $lowConfidence,
+            ));
+        }
+
         return self::SUCCESS;
+    }
+
+    /**
+     * Whether a harvested signature carries no usable type: every variable is
+     * `mixed` (optionally nullable), so it declares the inputs but checks none
+     * of them. An empty signature is never written, so this is only asked of
+     * signatures that declare at least one variable.
+     *
+     * @param array<string, string> $variables
+     */
+    private function carriesOnlyMixedTypes(array $variables): bool
+    {
+        foreach ($variables as $variable) {
+            foreach (explode('|', ltrim($variable, '?')) as $part) {
+                if ($part !== 'mixed' && $part !== 'null') {
+                    return false;
+                }
+            }
+        }
+
+        return true;
     }
 
     /**

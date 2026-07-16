@@ -53,6 +53,23 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringNotContainsString('function () {', $compiled);
     }
 
+    public function testIncludeFirstBecomesViewCallSiteForTheFallbackCandidate(): void
+    {
+        $compiled = $this->compileView('first_include');
+
+        // @includeFirst renders the first candidate that exists; it is validated
+        // against the last (the guaranteed fallback), with the same scope
+        // forwarding as a plain @include so scope variables satisfy its signature.
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 10, 'bar' => 'baz'], get_defined_vars());",
+            $compiled
+        );
+        // The optional override ahead of the fallback is not turned into a call
+        // site of its own, so its signature never false-positives.
+        $this->assertStringNotContainsString("view('partials.override'", $compiled);
+        $this->assertStringNotContainsString('$__env->first', $compiled);
+    }
+
     public function testExtendsIsStrippedNotCompiledAsCallSite(): void
     {
         $compiled = $this->compileView('extends-template');
