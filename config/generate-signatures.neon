@@ -18,3 +18,7 @@ services:
         class: Bladestan\Console\Extraction\ViewDataCollector
         tags:
             - phpstan.collector
+    -
+        class: Bladestan\Console\Extraction\TemplateFreeVariableCollector
+        tags:
+            - phpstan.collector

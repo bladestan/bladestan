@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests\Console\Extraction;
 
+use Bladestan\Console\Extraction\TemplateFreeVariableCollector;
 use Bladestan\Console\Extraction\ViewDataCollector;
 use Bladestan\Console\Extraction\ViewSignatureCollectedDataRule;
+use Bladestan\NodeAnalyzer\TemplateFilePathResolver;
 use PhpParser\Node;
 use PHPStan\Collectors\Collector;
 use PHPStan\PhpDoc\TypeStringResolver;
@@ -46,13 +48,47 @@ final class ViewSignatureCollectedDataRuleTest extends RuleTestCase
         $this->addToAssertionCount(1);
     }
 
+    public function testTypesScopeForwardedIncludePartial(): void
+    {
+        // A bare @include compiles to a scope-forwarding view() call in the
+        // includer and no explicit data. The partial declares nothing itself; it
+        // reads $greeting from the forwarded scope. Its signature must therefore
+        // be recovered from the includer's scope, keyed to the partial by the
+        // @bladestan-source header the compiler writes.
+        $partialPath = self::getContainer()
+            ->getByType(TemplateFilePathResolver::class)
+            ->resolveExistingFilePath('foo');
+
+        $directory = sys_get_temp_dir() . '/bladestan-include-' . getmypid();
+        @mkdir($directory, 0o777, true);
+
+        $includer = $directory . '/compiled-includer.php';
+        file_put_contents($includer, "<?php\n\$greeting = 'hello';\nview('foo', [], get_defined_vars());\n");
+
+        $partial = $directory . '/compiled-partial.php';
+        file_put_contents($partial, "<?php\n// @bladestan-source: {$partialPath}\necho \$greeting;\n");
+
+        try {
+            $signatures = $this->harvestSignatures($includer, $partial);
+        } finally {
+            @unlink($includer);
+            @unlink($partial);
+            @rmdir($directory);
+        }
+
+        $this->assertArrayHasKey('foo', $signatures);
+        self::assertSame([
+            'greeting' => 'string',
+        ], $signatures['foo']['variables']);
+    }
+
     /**
      * @return array<string, array{template: string, view: string, variables: array<string, string>}>
      */
-    private function harvestSignatures(string $file): array
+    private function harvestSignatures(string ...$files): array
     {
         $signatures = [];
-        foreach ($this->gatherAnalyserErrors([$file]) as $error) {
+        foreach ($this->gatherAnalyserErrors($files) as $error) {
             $prefix = ViewSignatureCollectedDataRule::SENTINEL . ' ';
             if (! str_starts_with($error->getMessage(), $prefix)) {
                 continue;
@@ -76,7 +112,10 @@ final class ViewSignatureCollectedDataRuleTest extends RuleTestCase
      */
     protected function getCollectors(): array
     {
-        return [self::getContainer()->getByType(ViewDataCollector::class)];
+        return [
+            self::getContainer()->getByType(ViewDataCollector::class),
+            self::getContainer()->getByType(TemplateFreeVariableCollector::class),
+        ];
     }
 
     /**

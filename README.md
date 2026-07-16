@@ -87,7 +87,7 @@ On an existing project the fastest way to add signatures to templates is to gene
 php artisan bladestan:generate-signatures
 ```
 
-This reads the real type of each `view()`, `View::make()`, and Mailable `->markdown()` call with PHPStan and writes a `@bladestan-signature` to every template rendered with data from PHP that does not already have one. A view rendered with no data is left alone, since it has no contract to declare. Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. Templates reached only through `@include` or as components may still need a signature written by hand. The command is available only when Bladestan is installed as a dev dependency.
+This reads the real type of each `view()`, `View::make()`, and Mailable `->markdown()` call with PHPStan and writes a `@bladestan-signature` to every template rendered with data from PHP that does not already have one. Partials reached through `@include` are signed too, typed from the variables the including template forwards to them. A view rendered with no data is left alone, since it has no contract to declare. Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. Templates used only as components (`<x-...>`) may still need a signature written by hand. The command is available only when Bladestan is installed as a dev dependency.
 
 In a package that has no `artisan` binary, run the command through Testbench from the package root, pointing `--path` at your source directory:
 

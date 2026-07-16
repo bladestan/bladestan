@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\Console;
 
+use Bladestan\Compiler\SignatureExtractor;
 use Bladestan\Console\Extraction\ViewSignatureCollectedDataRule;
 use Illuminate\Console\Command;
 use JsonException;
@@ -45,6 +46,12 @@ final class GenerateBladeSignaturesCommand extends Command
      */
     protected $description = 'Generate @bladestan-signature docblocks from types inferred at view() call sites';
 
+    public function __construct(
+        private readonly SignatureExtractor $signatureExtractor,
+    ) {
+        parent::__construct();
+    }
+
     public function handle(): int
     {
         $configFile = $this->resolveConfigFile();
@@ -57,43 +64,69 @@ final class GenerateBladeSignaturesCommand extends Command
         }
 
         $scanPaths = $this->scanPaths();
-        $this->info(sprintf('Harvesting view() types with PHPStan (scanning %s)...', implode(', ', $scanPaths)));
-
-        $payloads = $this->harvest($configFile, $scanPaths);
-        if ($payloads === null) {
-            return self::FAILURE;
-        }
-
-        $this->line(sprintf('  found %d view(s) rendered from PHP', count($payloads)));
-
-        $written = 0;
-        $skipped = 0;
-        $empty = 0;
         $dryRun = (bool) $this->option('dry-run');
         $force = (bool) $this->option('force');
 
-        foreach ($payloads as $payload) {
-            // A view rendered with no data has no contract to declare. An empty
-            // signature is indistinguishable from no signature (both leave the
-            // call site unchecked), so writing one would only add noise.
-            if ($payload['variables'] === []) {
-                $empty++;
-                continue;
+        // A partial reached only through `@include` can be typed only once its
+        // includers are signed, because its variable types come from what they
+        // forward. Signing therefore runs in passes: each pass signs a further
+        // layer (render call sites, then the partials they include, then nested
+        // partials) until a pass changes nothing. A dry run makes no writes for
+        // a later pass to build on, so it reports a single pass.
+        $maxPasses = $dryRun ? 1 : 10;
+
+        $signed = 0;
+        $skipped = 0;
+        $empty = 0;
+        $passes = 0;
+
+        for ($pass = 1; $pass <= $maxPasses; $pass++) {
+            $this->info(sprintf(
+                'Harvesting view() and @include types with PHPStan (pass %d, scanning %s)...',
+                $pass,
+                implode(', ', $scanPaths),
+            ));
+
+            $payloads = $this->harvest($configFile, $scanPaths);
+            if ($payloads === null) {
+                return self::FAILURE;
             }
 
-            if (! $this->applySignature($payload, $force, $dryRun)) {
-                $skipped++;
-                continue;
+            $passes = $pass;
+            $wrote = 0;
+            $skipped = 0;
+            $empty = 0;
+
+            foreach ($payloads as $payload) {
+                // A view rendered with no data has no contract to declare. An
+                // empty signature is indistinguishable from no signature (both
+                // leave the call site unchecked), so writing one would only add
+                // noise.
+                if ($payload['variables'] === []) {
+                    $empty++;
+                    continue;
+                }
+
+                if (! $this->applySignature($payload, $force, $dryRun)) {
+                    $skipped++;
+                    continue;
+                }
+
+                $wrote++;
+                $this->line('  ' . ($dryRun ? 'would sign' : 'signed') . ": {$payload['view']}");
             }
 
-            $written++;
-            $this->line('  ' . ($dryRun ? 'would sign' : 'signed') . ": {$payload['view']}");
+            $signed += $wrote;
+            if ($wrote === 0) {
+                break;
+            }
         }
 
         $this->newLine();
         $this->info(sprintf(
-            'Done. %d signed, %d already-signed skipped, %d rendered with no data.',
-            $written,
+            'Done in %d pass(es). %d signed, %d already-signed skipped, %d rendered with no data.',
+            $passes,
+            $signed,
             $skipped,
             $empty,
         ));
@@ -197,17 +230,23 @@ final class GenerateBladeSignaturesCommand extends Command
     }
 
     /**
-     * The throwaway config that adds the collector to the project's own config.
+     * The throwaway config that adds the collectors to the project's own config.
      *
      * `paths!` replaces the project's analysis paths (the `!` overrides the
-     * merge) so only the scanned code is analysed, never the compiled-template
-     * directory. A dedicated `tmpDir` keeps this run's result cache separate
-     * from the project's normal one, so neither invalidates the other.
+     * merge) with the scanned code plus the compiled-template directory. The
+     * scanned code yields the render call sites that type each view; the
+     * compiled templates yield the `@include` call sites and the variables each
+     * partial reads, so partials reached only through `@include` can be signed
+     * too. A dedicated `tmpDir` keeps this run's result cache separate from the
+     * project's normal one, so neither invalidates the other.
      *
      * @param list<string> $scanPaths
      */
     private function buildAnalysisConfig(string $configFile, array $scanPaths, string $cacheDir): string
     {
+        $paths = $scanPaths;
+        $paths[] = $this->absolute('.bladestan');
+
         $fragment = dirname(__DIR__, 2) . '/config/generate-signatures.neon';
 
         $lines = [
@@ -218,8 +257,8 @@ final class GenerateBladeSignaturesCommand extends Command
             '    tmpDir: ' . $cacheDir,
             '    paths!:',
         ];
-        foreach ($scanPaths as $scanPath) {
-            $lines[] = '        - ' . $scanPath;
+        foreach ($paths as $path) {
+            $lines[] = '        - ' . $path;
         }
 
         return implode("\n", $lines) . "\n";
@@ -278,12 +317,21 @@ final class GenerateBladeSignaturesCommand extends Command
             return false;
         }
 
-        if (str_contains($contents, '@bladestan-signature') && ! $force) {
+        $hasSignature = $this->signatureExtractor->hasExplicitSignature($contents);
+        if ($hasSignature && ! $force) {
+            return false;
+        }
+
+        // Replace an existing signature rather than prepend a second one, so
+        // `--force` regenerates cleanly instead of stacking blocks.
+        $body = $hasSignature ? $this->signatureExtractor->stripSignatureBlock($contents) : $contents;
+        $newContents = $this->buildSignature($payload['variables']) . $body;
+        if ($newContents === $contents) {
             return false;
         }
 
         if (! $dryRun) {
-            file_put_contents($payload['template'], $this->buildSignature($payload['variables']) . $contents);
+            file_put_contents($payload['template'], $newContents);
         }
 
         return true;

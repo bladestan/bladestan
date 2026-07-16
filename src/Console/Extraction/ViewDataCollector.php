@@ -35,9 +35,13 @@ use ValueError;
  * site: the view name plus a variable => PHPDoc-type map, with the type printed
  * fully qualified so a written signature needs no `use` import.
  *
+ * A site that forwards the surrounding scope (a compiled bare `@include`) also
+ * records the types of every scope variable under `forwarded`, so a partial
+ * that relies on that scope can be typed from what its includers pass.
+ *
  * {@see ViewSignatureCollectedDataRule} aggregates every site of a view.
  *
- * @implements Collector<CallLike, list<array{view: string, variables: array<string, string>, line: int}>>
+ * @implements Collector<CallLike, list<array{view: string, variables: array<string, string>, forwarded: array<string, string>, line: int}>>
  * @see \Bladestan\Tests\Console\Extraction\ViewSignatureCollectedDataRuleTest
  */
 final class ViewDataCollector implements Collector
@@ -57,7 +61,7 @@ final class ViewDataCollector implements Collector
 
     /**
      * @param CallLike $node
-     * @return list<array{view: string, variables: array<string, string>, line: int}>|null
+     * @return list<array{view: string, variables: array<string, string>, forwarded: array<string, string>, line: int}>|null
      * @throws ValueError
      */
     public function processNode(Node $node, Scope $scope): ?array
@@ -80,11 +84,34 @@ final class ViewDataCollector implements Collector
             $sites[] = [
                 'view' => $renderTemplateWithParameter->templateName,
                 'variables' => $variables,
+                'forwarded' => $renderTemplateWithParameter->forwardsScope ? $this->forwardedScope($scope) : [],
                 'line' => $node->getStartLine(),
             ];
         }
 
         return $sites === [] ? null : $sites;
+    }
+
+    /**
+     * The types of every scope variable a bare `@include` forwards to its
+     * partial, minus the internals Blade injects. This is the type source for a
+     * partial that declares no data of its own; which of these variables the
+     * partial actually needs is decided from {@see TemplateFreeVariableCollector}.
+     *
+     * @return array<string, string>
+     */
+    private function forwardedScope(Scope $scope): array
+    {
+        $forwarded = [];
+        foreach ($scope->getDefinedVariables() as $variableName) {
+            if (BladeScopeVariables::isInternal($variableName)) {
+                continue;
+            }
+
+            $forwarded[$variableName] = $this->describeType($scope->getVariableType($variableName));
+        }
+
+        return $forwarded;
     }
 
     /**
