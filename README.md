@@ -36,10 +36,13 @@ Also add it to your `.gitignore`:
 .bladestan
 ```
 
-That's it. On each PHPStan run Bladestan recompiles only the templates that changed, and PHPStan's result cache re-analyzes only what's affected.
+That's it. Bladestan creates the `.bladestan` directory for you on the first run, so there is nothing to set up by hand. On each run it recompiles only the templates that changed, and PHPStan's result cache re-analyzes only what's affected.
 
 > [!NOTE]
 > The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
+
+> [!WARNING]
+> Add `.bladestan`, not your view directory. Your `resources/views` folder holds raw `.blade.php` source, which PHPStan cannot read as PHP: at best it reports nothing useful, at worst it reports errors that have nothing to do with your templates. If a view directory ends up in `paths`, Bladestan warns you so you can remove it. Templates are always analyzed from the compiled output, never from their source.
 
 Compiled templates are written under `.bladestan/__templates__/`.
 
@@ -84,7 +87,13 @@ On an existing project the fastest way to add signatures to templates is to gene
 php artisan bladestan:generate-signatures
 ```
 
-This reads the real type of each `view()`, `View::make()`, and Mailable `->markdown()` call with PHPStan and writes a `@bladestan-signature` to every template rendered from PHP that does not already have one. Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. Templates reached only through `@include` or as components may still need a signature written by hand. The command is available only when Bladestan is installed as a dev dependency.
+This reads the real type of each `view()`, `View::make()`, and Mailable `->markdown()` call with PHPStan and writes a `@bladestan-signature` to every template rendered with data from PHP that does not already have one. A view rendered with no data is left alone, since it has no contract to declare. Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. Templates reached only through `@include` or as components may still need a signature written by hand. The command is available only when Bladestan is installed as a dev dependency.
+
+In a package that has no `artisan` binary, run the command through Testbench from the package root, pointing `--path` at your source directory:
+
+```bash
+vendor/bin/testbench bladestan:generate-signatures --path=src
+```
 
 When writing signatures by hand or with an AI coding agent, the [signature guideline](docs/laravel-boost-guideline.md) captures the rules that keep the types correct and parseable.
 

@@ -1,0 +1,20 @@
+# Registers the type-harvesting collector and its reporting rule for
+# `bladestan:generate-signatures`. The command writes a throwaway config that
+# includes this file alongside the project's own PHPStan config, runs the
+# analysis once, and reads the harvested signatures back from the JSON output.
+#
+# customRulesetUsed silences PHPStan's "no rule level" notice: this run reports
+# only the harvested signatures, not diagnostics. Type inference (and every
+# Larastan extension that feeds it) still runs, which is what the collector
+# reads.
+parameters:
+    customRulesetUsed: true
+
+rules:
+    - Bladestan\Console\Extraction\ViewSignatureCollectedDataRule
+
+services:
+    -
+        class: Bladestan\Console\Extraction\ViewDataCollector
+        tags:
+            - phpstan.collector

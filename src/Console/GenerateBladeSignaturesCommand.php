@@ -4,34 +4,29 @@ declare(strict_types=1);
 
 namespace Bladestan\Console;
 
-use Bladestan\Console\ValueObject\RenderSite;
-use FilesystemIterator;
+use Bladestan\Console\Extraction\ViewSignatureCollectedDataRule;
 use Illuminate\Console\Command;
-use Illuminate\Contracts\View\Factory as ViewFactory;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use SplFileInfo;
+use JsonException;
 use Symfony\Component\Process\Exception\ExceptionInterface as ProcessException;
 use Symfony\Component\Process\Process;
-use UnexpectedValueException;
 
 /**
  * Generates `@bladestan-signature` docblocks by harvesting the types PHPStan
- * infers at each `view()` render site, so signatures reflect what controllers
- * actually pass rather than a hand-guessed contract.
+ * infers at each render site, so signatures reflect what controllers actually
+ * pass rather than a hand-guessed contract.
  *
- * The flow needs no hand-written types:
- *   1. Find every render site that names a template and passes a data argument.
- *   2. Inject `\PHPStan\dumpType(<that data>)` before each call.
- *   3. Run PHPStan once. Each dump returns an `array{var: Type, ...}` shape
- *      keyed by the exact variable names the view receives.
- *   4. Normalize each type to parser-safe, fully-qualified PHPDoc and write (or
- *      merge) the signature into the template, so it needs no `use` import.
- *   5. Restore the injected source files.
+ * Rather than editing project source to dump types, this runs PHPStan once with
+ * a collector added (see {@see \Bladestan\Console\Extraction\ViewDataCollector}
+ * and config/generate-signatures.neon). The collector reads the real type of
+ * every render site the analysis already understands and reports one signature
+ * per view; this command reads those back from the JSON output and writes them
+ * into the templates. Nothing in the project is modified except the templates
+ * that get a signature.
  *
  * By default only templates without a signature are written; pass `--force` to
- * overwrite, `--dry-run` to report without writing. `@include` partials and
- * class components are not yet covered (they are the natural next passes).
+ * overwrite and `--dry-run` to report without writing. Templates reached only
+ * through `@include` or as class components are not covered, since they are not
+ * rendered from an analysable PHP call site.
  */
 final class GenerateBladeSignaturesCommand extends Command
 {
@@ -39,9 +34,9 @@ final class GenerateBladeSignaturesCommand extends Command
      * @var string
      */
     protected $signature = 'bladestan:generate-signatures
-        {--path=* : Directories to scan for render calls (default: app)}
+        {--path=* : Directories or files to scan for render calls (default: app)}
         {--phpstan=vendor/bin/phpstan : Path to the PHPStan binary}
-        {--config=phpstan.neon : PHPStan config file}
+        {--config= : PHPStan config file (auto-detected when omitted)}
         {--force : Overwrite templates that already have a signature}
         {--dry-run : Report what would change without writing templates}';
 
@@ -50,97 +45,87 @@ final class GenerateBladeSignaturesCommand extends Command
      */
     protected $description = 'Generate @bladestan-signature docblocks from types inferred at view() call sites';
 
-    private const MARKER = 'BLADESIG';
-
-    public function __construct(
-        private readonly RenderSiteFinder $renderSiteFinder,
-        private readonly DumpedShapeParser $dumpedShapeParser,
-    ) {
-        parent::__construct();
-    }
-
-    public function handle(ViewFactory $viewFactory): int
+    public function handle(): int
     {
-        $this->info('Scanning for view render calls...');
+        $configFile = $this->resolveConfigFile();
+        if ($configFile === null) {
+            $this->error(
+                'No PHPStan config found. Pass --config, or create a phpstan.neon that includes Bladestan.',
+            );
 
-        $renderSites = [];
-        foreach ($this->phpFiles($this->scanPaths()) as $file) {
-            foreach ($this->renderSiteFinder->find($file) as $renderSite) {
-                $renderSites[] = $renderSite;
-            }
+            return self::FAILURE;
         }
 
-        $this->line(sprintf('  found %d render sites with data arguments', count($renderSites)));
-        if ($renderSites === []) {
-            return self::SUCCESS;
+        $scanPaths = $this->scanPaths();
+        $this->info(sprintf('Harvesting view() types with PHPStan (scanning %s)...', implode(', ', $scanPaths)));
+
+        $payloads = $this->harvest($configFile, $scanPaths);
+        if ($payloads === null) {
+            return self::FAILURE;
         }
 
-        /** @var array<string, list<RenderSite>> $sitesByFile */
-        $sitesByFile = [];
-        foreach ($renderSites as $renderSite) {
-            $sitesByFile[$renderSite->filePath][] = $renderSite;
-        }
-
-        // Inject dumpType calls, keeping the originals so they can be restored.
-        $backups = [];
-        foreach ($sitesByFile as $file => $fileSites) {
-            $original = @file_get_contents($file);
-            if ($original === false) {
-                continue;
-            }
-
-            $backups[$file] = $original;
-            file_put_contents($file, $this->inject($original, $fileSites));
-        }
-
-        try {
-            $this->info('Running PHPStan to harvest types (this analyses the injected files once)...');
-            $shapesByView = $this->harvest(array_keys($backups));
-        } finally {
-            foreach ($backups as $file => $original) {
-                file_put_contents($file, $original);
-            }
-        }
-
-        $this->line(sprintf('  harvested type dumps for %d views', count($shapesByView)));
+        $this->line(sprintf('  found %d view(s) rendered from PHP', count($payloads)));
 
         $written = 0;
         $skipped = 0;
-        $missing = 0;
+        $empty = 0;
         $dryRun = (bool) $this->option('dry-run');
         $force = (bool) $this->option('force');
 
-        foreach ($shapesByView as $viewName => $shapes) {
-            $templateFile = $this->resolveTemplate($viewFactory, $viewName);
-            if ($templateFile === null) {
-                $missing++;
-                $this->warn("  no template file for view [{$viewName}]");
+        foreach ($payloads as $payload) {
+            // A view rendered with no data has no contract to declare. An empty
+            // signature is indistinguishable from no signature (both leave the
+            // call site unchecked), so writing one would only add noise.
+            if ($payload['variables'] === []) {
+                $empty++;
                 continue;
             }
 
-            $signature = $this->buildSignature($this->dumpedShapeParser->mergeShapes($shapes));
-            if (! $this->applySignature($templateFile, $signature, $force, $dryRun)) {
+            if (! $this->applySignature($payload, $force, $dryRun)) {
                 $skipped++;
                 continue;
             }
 
             $written++;
-            $this->line('  ' . ($dryRun ? 'would sign' : 'signed') . ": {$viewName}");
+            $this->line('  ' . ($dryRun ? 'would sign' : 'signed') . ": {$payload['view']}");
         }
 
         $this->newLine();
         $this->info(sprintf(
-            'Done. %d signed, %d already-signed skipped, %d without a template file.',
+            'Done. %d signed, %d already-signed skipped, %d rendered with no data.',
             $written,
             $skipped,
-            $missing,
+            $empty,
         ));
 
         return self::SUCCESS;
     }
 
     /**
-     * @return list<string>
+     * The PHPStan config to analyse under, resolved to an absolute path.
+     * `--config` wins; otherwise the usual project config names are tried.
+     */
+    private function resolveConfigFile(): ?string
+    {
+        $configured = $this->stringOption('config');
+        if ($configured !== '') {
+            $absolute = $this->absolute($configured);
+
+            return is_file($absolute) ? $absolute : null;
+        }
+
+        foreach (['phpstan.neon', 'phpstan.neon.dist', 'phpstan.dist.neon'] as $candidate) {
+            $absolute = $this->absolute($candidate);
+            if (is_file($absolute)) {
+                return $absolute;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * @return list<string> Absolute scan paths (directories or files).
      */
     private function scanPaths(): array
     {
@@ -150,160 +135,146 @@ final class GenerateBladeSignaturesCommand extends Command
             $paths = ['app'];
         }
 
-        return array_map(fn (string $path): string => $this->absolute($path), $paths);
+        return array_values(array_filter(
+            array_map(fn (string $path): string => $this->absolute($path), $paths),
+            fn (string $path): bool => file_exists($path),
+        ));
     }
 
     /**
-     * @param list<string> $paths
-     * @return iterable<string>
-     */
-    private function phpFiles(array $paths): iterable
-    {
-        foreach ($paths as $path) {
-            if (is_file($path)) {
-                yield $path;
-                continue;
-            }
-
-            if (! is_dir($path)) {
-                continue;
-            }
-
-            try {
-                $iterator = new RecursiveIteratorIterator(
-                    new RecursiveDirectoryIterator($path, FilesystemIterator::SKIP_DOTS),
-                );
-            } catch (UnexpectedValueException) {
-                continue;
-            }
-
-            /** @var SplFileInfo $fileInfo */
-            foreach ($iterator as $fileInfo) {
-                if ($fileInfo->isFile() && $fileInfo->getExtension() === 'php') {
-                    yield $fileInfo->getPathname();
-                }
-            }
-        }
-    }
-
-    /**
-     * @param list<RenderSite> $renderSites
-     */
-    private function inject(string $code, array $renderSites): string
-    {
-        // Apply from the highest offset down so earlier offsets stay valid.
-        usort($renderSites, fn (RenderSite $a, RenderSite $b): int => $b->statementStartPos <=> $a->statementStartPos);
-
-        foreach ($renderSites as $renderSite) {
-            $dataSource = substr($code, $renderSite->dataStartPos, $renderSite->dataEndPos - $renderSite->dataStartPos + 1);
-            $dataSource = preg_replace('/\s+/', ' ', $dataSource) ?? $dataSource;
-            $indent = $this->indentAt($code, $renderSite->statementStartPos);
-            $injection = '\\PHPStan\\dumpType(' . $dataSource . '); /* ' . self::MARKER . ':' . $renderSite->viewName . " */\n" . $indent;
-            $code = substr($code, 0, $renderSite->statementStartPos) . $injection . substr($code, $renderSite->statementStartPos);
-        }
-
-        return $code;
-    }
-
-    private function indentAt(string $code, int $offset): string
-    {
-        $lineStart = strrpos(substr($code, 0, $offset), "\n");
-        $lineStart = $lineStart === false ? 0 : $lineStart + 1;
-
-        $prefix = substr($code, $lineStart, $offset - $lineStart);
-
-        return preg_match('/^\s*/', $prefix, $matches) === 1 ? $matches[0] : '';
-    }
-
-    /**
-     * Run PHPStan over the injected files and map each dumped shape back to the
-     * view whose marker sits on the dumped line.
+     * Run PHPStan once with the signature collector registered and read the
+     * harvested signatures back from its JSON output.
      *
-     * @param list<string> $files
-     * @return array<string, list<array<string, array{type: string, optional: bool}>>>
+     * @param list<string> $scanPaths
+     * @return list<array{template: string, view: string, variables: array<string, string>}>|null
+     *         Null when the analysis could not be run or its output could not be
+     *         understood (already reported to the user).
      */
-    private function harvest(array $files): array
+    private function harvest(string $configFile, array $scanPaths): ?array
     {
-        try {
-            $process = new Process(
-                array_merge(
-                    [$this->absolute($this->stringOption('phpstan')), 'analyse', '--error-format=raw', '--no-progress', '-c', $this->stringOption('config')],
-                    $files,
-                ),
-                $this->basePath(),
-            );
-            $process->setTimeout(null);
-            $process->run();
-            $output = $process->getOutput() . "\n" . $process->getErrorOutput();
-        } catch (ProcessException $processException) {
-            $this->warn('  PHPStan could not be run: ' . $processException->getMessage());
+        if ($scanPaths === []) {
+            $this->warn('  no scan path exists; nothing to analyse.');
 
             return [];
         }
 
-        /** @var array<string, list<string>> $sourceLineCache */
-        $sourceLineCache = [];
-        /** @var array<string, list<array<string, array{type: string, optional: bool}>>> $shapesByView */
-        $shapesByView = [];
+        $tmpDir = sys_get_temp_dir() . '/bladestan-signatures-' . md5($this->basePath());
+        if (! is_dir($tmpDir) && ! mkdir($tmpDir, 0o777, true) && ! is_dir($tmpDir)) {
+            $this->error("  could not create a temporary directory at {$tmpDir}");
 
-        foreach (explode("\n", $output) as $line) {
-            if (preg_match('#^(.+):(\d+):Dumped type: (.*)$#', $line, $matches) !== 1) {
-                continue;
-            }
-
-            $file = $matches[1];
-            $lineNumber = (int) $matches[2];
-            $sourceLineCache[$file] ??= @file($file) ?: [];
-            $sourceLine = $sourceLineCache[$file][$lineNumber - 1] ?? '';
-
-            if (preg_match('/' . self::MARKER . ':(\S+)\s*\*\//', $sourceLine, $markerMatch) !== 1) {
-                continue;
-            }
-
-            $shape = $this->dumpedShapeParser->parseShape($matches[3]);
-            if ($shape === null) {
-                continue;
-            }
-
-            $shapesByView[$markerMatch[1]][] = $shape;
-        }
-
-        return $shapesByView;
-    }
-
-    private function resolveTemplate(ViewFactory $viewFactory, string $viewName): ?string
-    {
-        // exists() consults the same finder without throwing, so a view that
-        // resolves only at runtime (a dynamic name, a package view we can't map)
-        // is skipped rather than aborting the command.
-        if (! $viewFactory->exists($viewName)) {
             return null;
         }
 
-        return $viewFactory->getFinder()
-            ->find($viewName);
+        $neonFile = $tmpDir . '/config.neon';
+        file_put_contents($neonFile, $this->buildAnalysisConfig($configFile, $scanPaths, $tmpDir . '/cache'));
+
+        try {
+            $process = new Process(
+                [
+                    $this->absolute($this->stringOption('phpstan')),
+                    'analyse',
+                    '--error-format=json',
+                    '--no-progress',
+                    '--no-interaction',
+                    '-c',
+                    $neonFile,
+                ],
+                $this->basePath(),
+            );
+            $process->setTimeout(null);
+            $process->run();
+            $output = $process->getOutput();
+            $errorOutput = $process->getErrorOutput();
+        } catch (ProcessException $processException) {
+            $this->error('  PHPStan could not be run: ' . $processException->getMessage());
+
+            return null;
+        } finally {
+            @unlink($neonFile);
+        }
+
+        return $this->parsePayloads($output, $errorOutput);
     }
 
     /**
-     * @param array<string, string> $variables
+     * The throwaway config that adds the collector to the project's own config.
+     *
+     * `paths!` replaces the project's analysis paths (the `!` overrides the
+     * merge) so only the scanned code is analysed, never the compiled-template
+     * directory. A dedicated `tmpDir` keeps this run's result cache separate
+     * from the project's normal one, so neither invalidates the other.
+     *
+     * @param list<string> $scanPaths
      */
-    private function buildSignature(array $variables): string
+    private function buildAnalysisConfig(string $configFile, array $scanPaths, string $cacheDir): string
     {
-        $lines = ['@php', '/**', ' * @bladestan-signature'];
-        foreach ($variables as $name => $type) {
-            $lines[] = ' * @var ' . $type . ' $' . $name;
-        }
+        $fragment = dirname(__DIR__, 2) . '/config/generate-signatures.neon';
 
-        $lines[] = ' */';
-        $lines[] = '@endphp';
+        $lines = [
+            'includes:',
+            '    - ' . $configFile,
+            '    - ' . $fragment,
+            'parameters:',
+            '    tmpDir: ' . $cacheDir,
+            '    paths!:',
+        ];
+        foreach ($scanPaths as $scanPath) {
+            $lines[] = '        - ' . $scanPath;
+        }
 
         return implode("\n", $lines) . "\n";
     }
 
-    private function applySignature(string $file, string $signature, bool $force, bool $dryRun): bool
+    /**
+     * Pull the signature payloads out of PHPStan's JSON error output. Every
+     * other message (real diagnostics, if any) is ignored.
+     *
+     * @return list<array{template: string, view: string, variables: array<string, string>}>|null
+     */
+    private function parsePayloads(string $output, string $errorOutput): ?array
     {
-        $contents = @file_get_contents($file);
+        try {
+            /** @var array{files?: array<string, array{messages?: list<array{message?: string, identifier?: string}>}>} $decoded */
+            $decoded = json_decode($output, true, 512, JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            $this->error('  PHPStan did not return analysable output. Its output was:');
+            $this->line(trim($output . "\n" . $errorOutput));
+
+            return null;
+        }
+
+        $prefix = ViewSignatureCollectedDataRule::SENTINEL . ' ';
+        $payloads = [];
+        foreach ($decoded['files'] ?? [] as $fileReport) {
+            foreach ($fileReport['messages'] ?? [] as $message) {
+                $text = $message['message'] ?? '';
+                if (! str_starts_with($text, $prefix)) {
+                    continue;
+                }
+
+                try {
+                    /** @var array{template: string, view: string, variables: array<string, string>} $payload */
+                    $payload = json_decode(substr($text, strlen($prefix)), true, 512, JSON_THROW_ON_ERROR);
+                } catch (JsonException) {
+                    continue;
+                }
+
+                $payloads[] = $payload;
+            }
+        }
+
+        return $payloads;
+    }
+
+    /**
+     * @param array{template: string, view: string, variables: array<string, string>} $payload
+     */
+    private function applySignature(array $payload, bool $force, bool $dryRun): bool
+    {
+        $contents = @file_get_contents($payload['template']);
         if ($contents === false) {
+            $this->warn("  could not read template for view [{$payload['view']}]");
+
             return false;
         }
 
@@ -312,10 +283,28 @@ final class GenerateBladeSignaturesCommand extends Command
         }
 
         if (! $dryRun) {
-            file_put_contents($file, $signature . $contents);
+            file_put_contents($payload['template'], $this->buildSignature($payload['variables']) . $contents);
         }
 
         return true;
+    }
+
+    /**
+     * @param array<string, string> $variables
+     */
+    private function buildSignature(array $variables): string
+    {
+        // blade-formatter indents the PHP inside an @php block by four spaces, so
+        // match that here to spare anyone running the formatter a reformat diff.
+        $lines = ['@php', '    /**', '     * @bladestan-signature'];
+        foreach ($variables as $name => $type) {
+            $lines[] = '     * @var ' . $type . ' $' . $name;
+        }
+
+        $lines[] = '     */';
+        $lines[] = '@endphp';
+
+        return implode("\n", $lines) . "\n";
     }
 
     private function absolute(string $path): string
@@ -323,9 +312,19 @@ final class GenerateBladeSignaturesCommand extends Command
         return str_starts_with($path, '/') ? $path : $this->basePath() . '/' . $path;
     }
 
+    /**
+     * The project root the command operates on: the directory PHPStan runs in
+     * and the anchor for relative config, scan, and binary paths.
+     *
+     * This is the working directory the command was invoked from, not the
+     * framework's base path. Under Testbench (how a package runs its own
+     * commands) the base path points at the throwaway skeleton app, while the
+     * project being analysed, its `phpstan.neon`, and its `vendor/bin/phpstan`
+     * all live in the working directory.
+     */
     private function basePath(): string
     {
-        return $this->laravel->basePath();
+        return getcwd() ?: $this->laravel->basePath();
     }
 
     private function stringOption(string $name): string

@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Bladestan\Blade\PhpLineToTemplateLineResolver;
+use Bladestan\Bootstrap\RawTemplatePathDetector;
 use Bladestan\Bootstrap\TemplateCompilationBootstrap;
 use Bladestan\Compiler\BladeToPHPCompiler;
 use Bladestan\Compiler\ComponentScopeResolver;
@@ -37,6 +38,8 @@ if (! defined('LARAVEL_START')) {
 // compilation time is spent.
 $bladestanCompiledViewPath = getcwd() . '/.bladestan';
 $bladestanShouldCompile = false;
+/** @var list<string> $bladestanAnalysedPaths */
+$bladestanAnalysedPaths = [];
 if (isset($container) && $container instanceof PHPStan\DependencyInjection\Container) {
     try {
         /** @var array{compiledViewPath: string} $bladestanParameters */
@@ -91,42 +94,75 @@ if (isset($app)) {
     $bladestanArgv = $_SERVER['argv'] ?? [];
     $bladestanIsWorkerProcess = in_array($bladestanArgv[1] ?? '', ['worker', 'fixer:worker'], true);
 
-    if ($bladestanShouldCompile && ! $bladestanIsWorkerProcess) {
-        // Phase 1: compile all blade templates to standalone PHP files.
-        // Construct compiler dependencies manually (no Bladestan DI container yet).
-        $simplePhpParser = new SimplePhpParser();
-        $printerStandard = new Standard();
-        $constExprEvaluator = new ConstExprEvaluator();
-        $signatureExtractor = new SignatureExtractor();
-        $arrayStringToArrayConverter = new ArrayStringToArrayConverter($printerStandard, $constExprEvaluator);
-        $bladeLineNumberNodeVisitor = new BladeLineNumberNodeVisitor();
-        $phpLineToTemplateLineResolver = new PhpLineToTemplateLineResolver(
-            $bladeLineNumberNodeVisitor,
-            $simplePhpParser
+    if (! $bladestanIsWorkerProcess) {
+        $bladestanTemplateDiscovery = new TemplateDiscovery();
+
+        // Advisory: raw `.blade.php` files must never be analysed directly.
+        // Bladestan analyses templates from its compiled output under
+        // `.bladestan`; a view directory left in PHPStan's `paths` makes PHPStan
+        // parse the raw templates as plain PHP and report meaningless errors.
+        // Warn rather than fail so an intentional setup still runs.
+        $bladestanNormalize = static fn (string $path): string => rtrim(
+            str_replace('\\', '/', realpath($path) ?: $path),
+            '/',
         );
 
-        $bladeCompiler = (new BladeCompilerFactory())->create();
+        try {
+            $bladestanConflicts = (new RawTemplatePathDetector())->conflictingPaths(
+                array_values(array_map($bladestanNormalize, $bladestanAnalysedPaths)),
+                array_values(array_map($bladestanNormalize, $bladestanTemplateDiscovery->getFilePaths())),
+            );
 
-        $bladeToPhpCompiler = new BladeToPHPCompiler(
-            new Filesystem(),
-            $bladeCompiler,
-            $printerStandard,
-            new ValueResolver(),
-            new VarDocNodeFactory(),
-            $phpLineToTemplateLineResolver,
-            $arrayStringToArrayConverter,
-            new FileNameAndLineNumberAddingPreCompiler(),
-            new LivewireTagCompiler($arrayStringToArrayConverter),
-            $simplePhpParser,
-            $signatureExtractor,
-            new ComponentScopeResolver($bladeCompiler, $arrayStringToArrayConverter),
-        );
+            foreach ($bladestanConflicts as $bladestanConflict) {
+                fwrite(STDERR, sprintf(
+                    "Bladestan: the analysed path \"%s\" contains raw Blade templates.\n"
+                    . "PHPStan parses .blade.php files as plain PHP, so any errors from them do not reflect your templates.\n"
+                    . 'Remove this path from PHPStan "paths" and add ".bladestan" instead. '
+                    . "Bladestan compiles your templates there and analyses them against their signatures.\n",
+                    $bladestanConflict,
+                ));
+            }
+        } catch (Throwable) {
+            // Template discovery failed (e.g. no bootable app) — skip the check.
+        }
 
-        (new TemplateCompilationBootstrap(
-            new TemplateDiscovery(),
-            $bladeToPhpCompiler,
-            $bladestanCompiledViewPath,
-            getcwd() ?: '',
-        ))->run();
+        if ($bladestanShouldCompile) {
+            // Phase 1: compile all blade templates to standalone PHP files.
+            // Construct compiler dependencies manually (no Bladestan DI container yet).
+            $simplePhpParser = new SimplePhpParser();
+            $printerStandard = new Standard();
+            $constExprEvaluator = new ConstExprEvaluator();
+            $signatureExtractor = new SignatureExtractor();
+            $arrayStringToArrayConverter = new ArrayStringToArrayConverter($printerStandard, $constExprEvaluator);
+            $bladeLineNumberNodeVisitor = new BladeLineNumberNodeVisitor();
+            $phpLineToTemplateLineResolver = new PhpLineToTemplateLineResolver(
+                $bladeLineNumberNodeVisitor,
+                $simplePhpParser
+            );
+
+            $bladeCompiler = (new BladeCompilerFactory())->create();
+
+            $bladeToPhpCompiler = new BladeToPHPCompiler(
+                new Filesystem(),
+                $bladeCompiler,
+                $printerStandard,
+                new ValueResolver(),
+                new VarDocNodeFactory(),
+                $phpLineToTemplateLineResolver,
+                $arrayStringToArrayConverter,
+                new FileNameAndLineNumberAddingPreCompiler(),
+                new LivewireTagCompiler($arrayStringToArrayConverter),
+                $simplePhpParser,
+                $signatureExtractor,
+                new ComponentScopeResolver($bladeCompiler, $arrayStringToArrayConverter),
+            );
+
+            (new TemplateCompilationBootstrap(
+                $bladestanTemplateDiscovery,
+                $bladeToPhpCompiler,
+                $bladestanCompiledViewPath,
+                getcwd() ?: '',
+            ))->run();
+        }
     }
 }
