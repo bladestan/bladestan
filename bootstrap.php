@@ -40,6 +40,7 @@ $bladestanCompiledViewPath = getcwd() . '/.bladestan';
 $bladestanShouldCompile = false;
 $bladestanExtensionLoaded = false;
 $bladestanReportUnanalysed = true;
+$bladestanErrorFormatConfigured = false;
 /** @var list<string> $bladestanAnalysedPaths */
 $bladestanAnalysedPaths = [];
 if (isset($container) && $container instanceof PHPStan\DependencyInjection\Container) {
@@ -49,6 +50,11 @@ if (isset($container) && $container instanceof PHPStan\DependencyInjection\Conta
         $bladestanCompiledViewPath = $bladestanParameters['compiledViewPath'];
         $bladestanExtensionLoaded = true;
         $bladestanReportUnanalysed = $bladestanParameters['reportUnanalysedTemplates'] ?? true;
+
+        // A format set in the config counts the same as one passed on the CLI:
+        // either way the user chose their output, so the blade-remap advisory
+        // below stays quiet.
+        $bladestanErrorFormatConfigured = $container->getParameter('errorFormat') !== null;
 
         /** @var list<string> $bladestanAnalysedPaths */
         $bladestanAnalysedPaths = $container->getParameter('analysedPaths');
@@ -146,6 +152,33 @@ if (isset($app)) {
                 "Bladestan: \".bladestan\" is not among PHPStan's analysed paths, so your Blade template bodies are not analysed (view() call sites are still checked).\n"
                 . "Add \".bladestan\" to \"paths\" in your PHPStan config to analyse your templates.\n"
                 . "If you only want call-site validation, set parameters.bladestan.reportUnanalysedTemplates to false to silence this message.\n",
+            );
+        }
+
+        // Advisory: `.bladestan` is being analysed but no output format was
+        // chosen, so errors will point at the compiled PHP instead of the
+        // original template. Only `--error-format=blade` remaps them. Choosing
+        // any format (on the CLI or in config) means the user picked their
+        // output and silences this. Commands that don't analyse are skipped.
+        $bladestanErrorFormatOnCli = false;
+        foreach ($bladestanArgv as $bladestanArg) {
+            if ($bladestanArg === '--error-format' || str_starts_with((string) $bladestanArg, '--error-format=')) {
+                $bladestanErrorFormatOnCli = true;
+                break;
+            }
+        }
+
+        $bladestanNonAnalysingCommands = ['clear-result-cache', 'dump-parameters', 'diagnose', 'completion', 'help', 'list'];
+        if ($bladestanShouldCompile
+            && ! $bladestanErrorFormatOnCli
+            && ! $bladestanErrorFormatConfigured
+            && ! in_array($bladestanArgv[1] ?? '', $bladestanNonAnalysingCommands, true)
+        ) {
+            fwrite(
+                STDERR,
+                "Bladestan: analysing compiled templates in \".bladestan\" without \"--error-format=blade\".\n"
+                . "Errors inside templates will point at the compiled PHP under \".bladestan\", not your \".blade.php\" files.\n"
+                . "Run PHPStan with \"--error-format=blade\" to map errors back to the original template and line.\n",
             );
         }
 

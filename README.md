@@ -189,6 +189,8 @@ vendor/bin/phpstan analyse --error-format=blade
  ------ -----------------------------------------------
 ```
 
+Without it, template errors point at the compiled PHP under `.bladestan` instead of your `.blade.php` files, so Bladestan reminds you to pass `--error-format=blade` when it sees compiled templates being analyzed without a chosen format. Selecting any format, on the command line or with the `errorFormat` config parameter, silences the reminder.
+
 ## Credits
 
 - [Can Vural](https://github.com/canvural) - this package is based on that, with upgrade for Laravel 10 and active maintenance
