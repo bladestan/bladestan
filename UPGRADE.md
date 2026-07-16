@@ -22,8 +22,10 @@ analysis, the way a function is, and its signature is its parameter list.
 
 The gain is that a template is now checked once against a stable contract, every
 render site is validated against it, and the errors you see reflect the
-template's own body rather than whichever call site happened to reach it. In
-exchange, the types must be declared: a template without a signature gives the
+template's own body rather than whichever call site happened to reach it. A
+template nothing renders is still analyzed, and an error in a template rendered
+from ten places is reported once, not ten times. In exchange, the types must be
+declared: a template without a signature gives the
 analyzer nothing to check, exactly as an untyped function does. Its variables
 read as `mixed`, nothing on them can be verified, and at level 9 each one is
 reported as possibly undefined. A template the old model typed implicitly from
