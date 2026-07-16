@@ -4,12 +4,18 @@ declare(strict_types=1);
 
 namespace Bladestan\Console;
 
+use Bladestan\Compiler\ComponentScopeResolver;
 use Bladestan\Compiler\SignatureExtractor;
 use Bladestan\Console\Extraction\ViewSignatureCollectedDataRule;
+use Bladestan\Discovery\TemplateDiscovery;
+use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Illuminate\Console\Command;
 use JsonException;
+use PhpParser\ConstExprEvaluator;
+use PhpParser\PrettyPrinter\Standard;
 use Symfony\Component\Process\Exception\ExceptionInterface as ProcessException;
 use Symfony\Component\Process\Process;
+use Throwable;
 
 /**
  * Generates `@bladestan-signature` docblocks by harvesting the types PHPStan
@@ -24,10 +30,13 @@ use Symfony\Component\Process\Process;
  * into the templates. Nothing in the project is modified except the templates
  * that get a signature.
  *
+ * Partials reached only through `@include` are covered too: they are analysed
+ * from the compiled templates and typed from what their includers forward.
+ * Anonymous components, which are reached through `<x-...>` tags rather than a
+ * render call, are scaffolded from their `@props` declaration instead.
+ *
  * By default only templates without a signature are written; pass `--force` to
- * overwrite and `--dry-run` to report without writing. Templates reached only
- * through `@include` or as class components are not covered, since they are not
- * rendered from an analysable PHP call site.
+ * overwrite and `--dry-run` to report without writing.
  */
 final class GenerateBladeSignaturesCommand extends Command
 {
@@ -80,6 +89,12 @@ final class GenerateBladeSignaturesCommand extends Command
         $empty = 0;
         $passes = 0;
 
+        // A template's types are final once its includers are signed (an earlier
+        // pass), so each is written at most once per run. This also lets `--force`
+        // converge: without it, every pass would rewrite every template and the
+        // loop would always run to its cap.
+        $writtenThisRun = [];
+
         for ($pass = 1; $pass <= $maxPasses; $pass++) {
             $this->info(sprintf(
                 'Harvesting view() and @include types with PHPStan (pass %d, scanning %s)...',
@@ -98,6 +113,10 @@ final class GenerateBladeSignaturesCommand extends Command
             $empty = 0;
 
             foreach ($payloads as $payload) {
+                if (isset($writtenThisRun[$payload['template']])) {
+                    continue;
+                }
+
                 // A view rendered with no data has no contract to declare. An
                 // empty signature is indistinguishable from no signature (both
                 // leave the call site unchecked), so writing one would only add
@@ -112,6 +131,7 @@ final class GenerateBladeSignaturesCommand extends Command
                     continue;
                 }
 
+                $writtenThisRun[$payload['template']] = true;
                 $wrote++;
                 $this->line('  ' . ($dryRun ? 'would sign' : 'signed') . ": {$payload['view']}");
             }
@@ -122,16 +142,87 @@ final class GenerateBladeSignaturesCommand extends Command
             }
         }
 
+        // Anonymous components are reached through `<x-...>` tags, not render or
+        // @include call sites, so their inputs are not harvested above. Scaffold
+        // them from their `@props` declaration instead.
+        $this->newLine();
+        $this->info('Scaffolding anonymous component signatures from @props...');
+        $components = $this->scaffoldComponentSignatures($dryRun);
+
         $this->newLine();
         $this->info(sprintf(
-            'Done in %d pass(es). %d signed, %d already-signed skipped, %d rendered with no data.',
+            'Done in %d pass(es). %d signed, %d component(s) scaffolded from @props, %d already-signed skipped, %d rendered with no data.',
             $passes,
             $signed,
+            $components,
             $skipped,
             $empty,
         ));
 
         return self::SUCCESS;
+    }
+
+    /**
+     * Write a `@bladestan-signature` for every anonymous component that declares
+     * `@props` but has no signature yet, typing each prop from its default value
+     * (`mixed` where there is none). The author then replaces the `mixed` types
+     * with real ones; at levels below 9 the untyped props can be left as-is.
+     *
+     * Existing signatures are never overwritten here, even with `--force`: a
+     * hand-typed component signature is always better than what `@props` alone
+     * can express, so it is left untouched.
+     */
+    private function scaffoldComponentSignatures(bool $dryRun): int
+    {
+        try {
+            $bladeCompiler = $this->laravel->make('blade.compiler');
+            $templates = (new TemplateDiscovery())->discoverTemplates();
+        } catch (Throwable) {
+            // No Blade compiler bound, or templates could not be discovered.
+            return 0;
+        }
+
+        $componentScopeResolver = new ComponentScopeResolver(
+            $bladeCompiler,
+            new ArrayStringToArrayConverter(new Standard(), new ConstExprEvaluator()),
+        );
+
+        $vendorPrefix = $this->basePath() . '/vendor/';
+
+        $scaffolded = 0;
+        foreach ($templates as $file => $view) {
+            // Third-party components cannot be annotated in place.
+            if (str_starts_with($file, $vendorPrefix)) {
+                continue;
+            }
+
+            $source = @file_get_contents($file);
+            if ($source === false) {
+                continue;
+            }
+
+            $props = $componentScopeResolver->propsSignature($source);
+            if ($props === null) {
+                continue;
+            }
+
+            if ($props === []) {
+                continue;
+            }
+
+            $payload = [
+                'template' => $file,
+                'view' => $view,
+                'variables' => $props,
+            ];
+
+            if ($this->applySignature($payload, false, $dryRun)) {
+                $scaffolded++;
+                $this->line('  ' . ($dryRun ? 'would scaffold' : 'scaffolded') . ": {$view}");
+            }
+        }
+
+        return $scaffolded;
     }
 
     /**

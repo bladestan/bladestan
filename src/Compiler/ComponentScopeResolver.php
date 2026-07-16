@@ -114,6 +114,30 @@ final class ComponentScopeResolver
     }
 
     /**
+     * The signature a component's `@props` declares: each prop name mapped to the
+     * type of its default value, or `mixed` when it has no default (or a null
+     * default). This is what `bladestan:generate-signatures` scaffolds for an
+     * anonymous component, giving the author the exact prop list to type. Returns
+     * null when the template has no `@props` directive.
+     *
+     * @return array<string, string>|null
+     */
+    public function propsSignature(string $bladeContent): ?array
+    {
+        $props = $this->extractProps($bladeContent);
+        if ($props === null) {
+            return null;
+        }
+
+        $signature = [];
+        foreach ($props as $name => $defaultExpression) {
+            $signature[$name] = $this->typeFromDefaultExpression($defaultExpression);
+        }
+
+        return $signature;
+    }
+
+    /**
      * Parse a `@props([...])` directive into prop name => default expression
      * (null when the prop is declared without a default). Returns null when the
      * template has no `@props` directive.

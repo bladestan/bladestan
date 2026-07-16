@@ -41,6 +41,30 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         $this->assertArrayNotHasKey('attributes', $scope);
     }
 
+    public function testPropsSignatureReturnsOnlyPropsTypedFromDefaults(): void
+    {
+        $signature = $this->componentScopeResolver->propsSignature(
+            "@props(['url', 'selected', 'label', 'indent' => false])\n<a href=\"{{ \$url }}\">{{ \$label }}</a>",
+        );
+
+        // Only the declared props, no Blade-injected internals ($slot,
+        // $attributes, $componentName): a caller passes props, not those.
+        $this->assertSame(
+            [
+                'url' => 'mixed',
+                'selected' => 'mixed',
+                'label' => 'mixed',
+                'indent' => 'bool',
+            ],
+            $signature,
+        );
+    }
+
+    public function testPropsSignatureIsNullWithoutPropsDirective(): void
+    {
+        $this->assertNull($this->componentScopeResolver->propsSignature('<div>{{ $slot }}</div>'));
+    }
+
     public function testComponentViewWithoutPropsGetsAttributesSlotAndName(): void
     {
         $scope = $this->componentScopeResolver->resolve('components.card', '<div>{{ $slot }}</div>');
