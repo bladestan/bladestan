@@ -174,20 +174,6 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
                 }
 
                 $rows[] = [$this->formatLineNumber($displayLine), $message];
-
-                // Legacy call-site-centric metadata (from BladeRule)
-                $errorMetadata = $error->getMetadata();
-                $templateFilePath = $errorMetadata['template_file_path'] ?? null;
-                $templateLine = $errorMetadata['template_line'] ?? null;
-
-                if (is_string($templateFilePath) && is_int($templateLine)) {
-                    /** @phpstan-ignore phpstanApi.method */
-                    $relativeTemplateFileLine = $this->simpleRelativePathHelper->getRelativePath(
-                        $templateFilePath
-                    ) . ':' . $templateLine;
-
-                    $rows[] = ['', 'rendered in: ' . $relativeTemplateFileLine];
-                }
             }
 
             $outputStyle->table(['Line', $this->relativePathHelper->getRelativePath($file)], $rows);

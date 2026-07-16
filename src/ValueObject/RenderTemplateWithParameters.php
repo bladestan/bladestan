@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bladestan\TemplateCompiler\ValueObject;
+namespace Bladestan\ValueObject;
 
 use PHPStan\Type\Type;
 

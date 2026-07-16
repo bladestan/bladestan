@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Message;
 use PhpParser\Node\Expr\New_;

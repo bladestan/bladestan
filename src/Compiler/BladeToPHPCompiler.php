@@ -10,24 +10,16 @@ use Bladestan\NodeAnalyzer\ValueResolver;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
-use Bladestan\PhpParser\NodeVisitor\IncludeCollector;
 use Bladestan\PhpParser\NodeVisitor\RemoveLivewireCompilerArtifacts;
 use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludesToViewCalls;
 use Bladestan\PhpParser\SimplePhpParser;
-use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
-use Bladestan\ValueObject\AbstractInlinedElement;
-use Bladestan\ValueObject\ComponentAndVariables;
-use Bladestan\ValueObject\IncludedViewAndVariables;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
 use Bladestan\ValueObject\TemplateSignature;
 use Bladestan\ValueObject\ViewDataCollector;
-use Illuminate\Contracts\Filesystem\FileNotFoundException;
 use Illuminate\Contracts\View\Factory as ViewFactory;
-use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\ViewErrorBag;
-use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
 use InvalidArgumentException;
 use PhpParser\Comment\Doc;
@@ -53,18 +45,6 @@ final class BladeToPHPCompiler
      * instead of leaving orphans the per-view prune cannot reach.
      */
     private const COMPILED_OUTPUT_VERSION = 4;
-
-    /**
-     * @see https://regex101.com/r/Fo7sHW/1
-     * @var string
-     */
-    private const COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\(.+?\$component->withAttributes\(\[.*?\]\);/s';
-
-    /**
-     * @see https://regex101.com/r/XGSsgA/1
-     * @var string
-     */
-    private const ANONYMOUS_COMPONENT_REGEX = '/Illuminate\\\\View\\\\AnonymousComponent::resolve\(\[\'view\' => \'([^\']+)\', *\'data\' => (\[.*?\])\] \+ \(isset\(\$attributes\)/s';
 
     /**
      * @see https://regex101.com/r/B3BbxW/1
@@ -104,11 +84,9 @@ final class BladeToPHPCompiler
     private readonly ViewFactory $viewFactory;
 
     public function __construct(
-        private readonly Filesystem $fileSystem,
         private readonly BladeCompiler $bladeCompiler,
         private readonly Standard $printerStandard,
         private readonly ValueResolver $valueResolver,
-        private readonly VarDocNodeFactory $varDocNodeFactory,
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
@@ -217,34 +195,6 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * @param array<string, Type> $parametersArray
-     */
-    public function compileContent(
-        string $resolvedTemplateFilePath,
-        string $viewName,
-        string $fileContents,
-        array $parametersArray
-    ): PhpFileContentsWithLineMap {
-        $this->errors = [];
-
-        $variablesAndTypes = $this->getViewData($viewName)
-            + $parametersArray;
-
-        $phpCode = "<?php\n\n" . $this->inlineInclude(
-            $resolvedTemplateFilePath,
-            $fileContents,
-            array_keys($variablesAndTypes)
-        );
-        $phpCode = $this->resolveComponents($phpCode);
-        $phpCode = $this->bubbleUpImports($phpCode);
-
-        $phpCode = $this->decoratePhpContent($phpCode, $variablesAndTypes);
-
-        $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($phpCode);
-        return new PhpFileContentsWithLineMap($phpCode, $phpLinesToTemplateLines, $this->errors);
-    }
-
-    /**
      * @return array<string, Type>
      */
     private function getViewData(string $viewName): array
@@ -254,21 +204,6 @@ final class BladeToPHPCompiler
         $viewData = [];
         foreach ($data as $name => $value) {
             $viewData[(string) $name] = $this->valueResolver->resolve($value);
-        }
-
-        return $viewData;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    private function getViewDataNative(string $viewName): array
-    {
-        $data = $this->getViewDataRaw($viewName);
-
-        $viewData = [];
-        foreach ($data as $name => $value) {
-            $viewData[(string) $name] = $this->valueResolver->toNative($value);
         }
 
         return $viewData;
@@ -323,67 +258,6 @@ final class BladeToPHPCompiler
         }
 
         return $this->livewireTagCompiler->replace($rawPhpContent);
-    }
-
-    /**
-     * @param array<string> $allVariablesList
-     */
-    private function inlineInclude(string $filePath, string $fileContents, array $allVariablesList): string
-    {
-        // Precompile contents to add template file name and line numbers
-        $fileContents = $this->fileNameAndLineNumberAddingPreCompiler
-            ->completeLineCommentsToBladeContents($filePath, $fileContents);
-
-        // Extract PHP content from HTML and PHP mixed content
-        $rawPhpContent = '';
-        try {
-            /** @throws InvalidArgumentException */
-            $compiledBlade = $this->bladeCompiler->compileString($fileContents);
-            $stmts = $this->traverseStmtsWithVisitors($compiledBlade, [
-                new RemoveLivewireCompilerArtifacts(),
-                new DeleteInlineHTML(),
-                new AddLoopVarTypeToForeachNodeVisitor(),
-                new TransformEach(),
-                new TransformIncludes(),
-            ]);
-            $rawPhpContent = $this->printerStandard->prettyPrint($stmts) . "\n";
-        } catch (ParserError) {
-            $filePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
-            $this->errors[] = ["View [{$filePath}] contains syntx errors.", 'bladestan.parsing'];
-        } catch (InvalidArgumentException $invalidArgumentException) {
-            $this->errors[] = [$invalidArgumentException->getMessage(), 'bladestan.missing'];
-        }
-
-        $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
-
-        // Recursively fetch and compile includes
-        foreach ($this->getIncludes($rawPhpContent) as $inlinedElement) {
-            try {
-                /** @throws InvalidArgumentException */
-                $includedFilePath = $this->viewFactory->getFinder()
-                    ->find($inlinedElement->includedViewName);
-                $includedContent = $this->fileSystem->get($includedFilePath);
-            } catch (InvalidArgumentException|FileNotFoundException $exception) {
-                $includedFilePath = '';
-                $includedContent = '';
-                $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
-            }
-
-            $includedContent = $inlinedElement->preprocessTemplate($includedContent, array_keys($this->shared));
-            $includedContent = $this->inlineInclude(
-                $includedFilePath,
-                $includedContent,
-                $inlinedElement->getInnerScopeVariableNames($allVariablesList)
-            );
-
-            $rawPhpContent = str_replace(
-                $inlinedElement->rawPhpContent,
-                $inlinedElement->generateInlineRepresentation($includedContent),
-                $rawPhpContent
-            );
-        }
-
-        return $rawPhpContent;
     }
 
     private function bubbleUpImports(string $rawPhpContent): string
@@ -468,19 +342,6 @@ final class BladeToPHPCompiler
 
             return [];
         }
-    }
-
-    /**
-     * @param array<string, Type> $variablesAndTypes
-     */
-    private function decoratePhpContent(string $phpCode, array $variablesAndTypes): string
-    {
-        $stmts = array_merge(
-            $this->varDocNodeFactory->createDocNodes($variablesAndTypes + $this->shared),
-            $this->simplePhpParser->parse($phpCode),
-        );
-
-        return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
     }
 
     /**
@@ -582,72 +443,5 @@ final class BladeToPHPCompiler
         }
 
         return $nodeTraverser->traverse($stmts);
-    }
-
-    /**
-     * @return list<AbstractInlinedElement>
-     */
-    private function getIncludes(string $rawPhpCode): array
-    {
-        $return = [];
-
-        try {
-            $includeCollector = new IncludeCollector();
-            $this->traverseStmtsWithVisitors("<?php\n\n" . $rawPhpCode, [$includeCollector]);
-            foreach ($includeCollector->getIncludes() as $include) {
-                $data = $include[2];
-                $extract = null;
-                if (preg_match('#^\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $data) === 1) {
-                    $extract = $data;
-                    $data = [];
-                } else {
-                    $data = $this->arrayStringToArrayConverter->convert($data);
-                    // Filter out attributes
-                    $data = array_filter($data, function (string|int $key): bool {
-                        return is_string($key) && preg_match(
-                            '#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s',
-                            $key
-                        ) === 1;
-                    }, ARRAY_FILTER_USE_KEY);
-                }
-
-                $data = $this->getViewDataNative($include[0]) + $data + $this->sharedNative;
-
-                $return[] = new IncludedViewAndVariables($include[0], $include[1], $data, $extract);
-            }
-        } catch (ParserError) {
-        }
-
-        preg_match_all(self::COMPONENT_REGEX, $rawPhpCode, $components, PREG_SET_ORDER);
-        foreach ($components as $component) {
-            if ($component[1] !== AnonymousComponent::class) {
-                continue;
-            }
-
-            preg_match(self::ANONYMOUS_COMPONENT_REGEX, $component[0], $matches);
-
-            $view = $matches[1] ?? '';
-            if ($view === '') {
-                continue;
-            }
-
-            $includeVariables = $matches[2] ?? '[]';
-            $includeVariables = $this->convertComponentData($includeVariables, $view);
-            // Filter out attributes
-            $includeVariables = array_filter($includeVariables, function (string|int $key): bool {
-                return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
-            }, ARRAY_FILTER_USE_KEY);
-
-            $includeVariables = $this->getViewDataNative($view) + $includeVariables + $this->sharedNative;
-
-            $return[] = new ComponentAndVariables(
-                $component[0],
-                $view,
-                $includeVariables,
-                $this->arrayStringToArrayConverter
-            );
-        }
-
-        return $return;
     }
 }

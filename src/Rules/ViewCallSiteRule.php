@@ -10,7 +10,7 @@ use Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
 use Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
 use Bladestan\NodeAnalyzer\MailablesContentMatcher;
 use Bladestan\NodeAnalyzer\TemplateFilePathResolver;
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\ValueObject\RenderTemplateWithParameters;
 use InvalidArgumentException;
 use PhpParser\Node;
 use PhpParser\Node\Expr\CallLike;

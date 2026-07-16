@@ -1,6 +1,3 @@
-includes:
-    - template-compiler/services.neon
-
 parametersSchema:
     bladestan: structure([
         compiledViewPath: string()
@@ -99,22 +96,13 @@ services:
 
     - PhpParser\PrettyPrinter\Standard
     - PhpParser\ConstExprEvaluator
-    - Illuminate\Filesystem\Filesystem
 
     - Bladestan\Laravel\View\BladeCompilerFactory
     -
         class: Illuminate\View\Compilers\BladeCompiler
         factory: ['@Bladestan\Laravel\View\BladeCompilerFactory', 'create']
 
-    # Legacy call-site-centric rule. Deliberately NOT registered under `rules:`
-    # — running it alongside the template-centric analysis would redo all the
-    # old per-call-site FileAnalyser work on top of the new pipeline. Kept as
-    # a service until fully removed.
-    - Bladestan\Rules\BladeRule
-
-    - Bladestan\ViewRuleHelper
     - Bladestan\Blade\PhpLineToTemplateLineResolver
-    - Bladestan\ErrorReporting\Blade\TemplateErrorsFactory
     - Bladestan\NodeAnalyzer\TemplateFilePathResolver
     - Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher
     - Bladestan\NodeAnalyzer\MailablesContentMatcher
@@ -127,11 +115,15 @@ services:
     - Bladestan\NodeAnalyzer\ValueResolver
     - Bladestan\Compiler\BladeToPHPCompiler
     - Bladestan\Compiler\ComponentScopeResolver
+    - Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
+    - Bladestan\Compiler\LivewireTagCompiler
     - Bladestan\Compiler\SignatureExtractor
     - Bladestan\Compiler\SignatureMerger
     - Bladestan\Compiler\TypeStringValidator
+    - Bladestan\NodeAnalyzer\TemplateVariableTypesResolver
     - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
     - Bladestan\PhpParser\ArrayStringToArrayConverter
+    - Bladestan\PhpParser\SimplePhpParser
     - Bladestan\Discovery\TemplateDiscovery
 
     -

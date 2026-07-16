@@ -16,10 +16,8 @@ use Bladestan\NodeAnalyzer\ValueResolver;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor;
 use Bladestan\PhpParser\SimplePhpParser;
-use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
 use Illuminate\Contracts\Console\Kernel;
 use Illuminate\Contracts\Foundation\Application;
-use Illuminate\Filesystem\Filesystem;
 use Larastan\Larastan\ApplicationResolver;
 use Laravel\Lumen\Application as LumenApplication;
 use Orchestra\Testbench\Concerns\CreatesApplication;
@@ -199,11 +197,9 @@ if (isset($app)) {
             $bladeCompiler = (new BladeCompilerFactory())->create();
 
             $bladeToPhpCompiler = new BladeToPHPCompiler(
-                new Filesystem(),
                 $bladeCompiler,
                 $printerStandard,
                 new ValueResolver(),
-                new VarDocNodeFactory(),
                 $phpLineToTemplateLineResolver,
                 $arrayStringToArrayConverter,
                 new FileNameAndLineNumberAddingPreCompiler(),

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bladestan\TemplateCompiler\TypeAnalyzer;
+namespace Bladestan\NodeAnalyzer;
 
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;

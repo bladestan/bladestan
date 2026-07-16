@@ -4,9 +4,6 @@ declare(strict_types=1);
 
 namespace Bladestan\ValueObject;
 
-/**
- * @see \Bladestan\TemplateCompiler\ValueObject\PhpFileContentsWithLineMap
- */
 final class PhpFileContentsWithLineMap
 {
     /**

@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Support\Facades\Response as ResponseFacades;
 use Illuminate\Support\Facades\View;
 use PhpParser\Node\Expr\FuncCall;

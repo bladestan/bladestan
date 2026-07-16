@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Contracts\View\Factory as ViewFactoryContract;
 use Illuminate\Http\Response;
