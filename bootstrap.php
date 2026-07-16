@@ -38,13 +38,17 @@ if (! defined('LARAVEL_START')) {
 // compilation time is spent.
 $bladestanCompiledViewPath = getcwd() . '/.bladestan';
 $bladestanShouldCompile = false;
+$bladestanExtensionLoaded = false;
+$bladestanReportUnanalysed = true;
 /** @var list<string> $bladestanAnalysedPaths */
 $bladestanAnalysedPaths = [];
 if (isset($container) && $container instanceof PHPStan\DependencyInjection\Container) {
     try {
-        /** @var array{compiledViewPath: string} $bladestanParameters */
+        /** @var array{compiledViewPath: string, reportUnanalysedTemplates?: bool} $bladestanParameters */
         $bladestanParameters = $container->getParameter('bladestan');
         $bladestanCompiledViewPath = $bladestanParameters['compiledViewPath'];
+        $bladestanExtensionLoaded = true;
+        $bladestanReportUnanalysed = $bladestanParameters['reportUnanalysedTemplates'] ?? true;
 
         /** @var list<string> $bladestanAnalysedPaths */
         $bladestanAnalysedPaths = $container->getParameter('analysedPaths');
@@ -107,6 +111,7 @@ if (isset($app)) {
             '/',
         );
 
+        $bladestanConflicts = [];
         try {
             $bladestanConflicts = (new RawTemplatePathDetector())->conflictingPaths(
                 array_values(array_map($bladestanNormalize, $bladestanAnalysedPaths)),
@@ -124,6 +129,24 @@ if (isset($app)) {
             }
         } catch (Throwable) {
             // Template discovery failed (e.g. no bootable app) — skip the check.
+        }
+
+        // Advisory: Bladestan is installed but `.bladestan` is not among the
+        // analysed paths, so template bodies go unanalysed. Skip this when a
+        // raw view directory was already flagged above (that message tells the
+        // user to add `.bladestan`), and let users who only want call-site
+        // validation silence it with `bladestan.reportUnanalysedTemplates`.
+        if ($bladestanConflicts === []
+            && $bladestanExtensionLoaded
+            && ! $bladestanShouldCompile
+            && $bladestanReportUnanalysed
+        ) {
+            fwrite(
+                STDERR,
+                "Bladestan: \".bladestan\" is not among PHPStan's analysed paths, so your Blade template bodies are not analysed (view() call sites are still checked).\n"
+                . "Add \".bladestan\" to \"paths\" in your PHPStan config to analyse your templates.\n"
+                . "If you only want call-site validation, set parameters.bladestan.reportUnanalysedTemplates to false to silence this message.\n",
+            );
         }
 
         if ($bladestanShouldCompile) {

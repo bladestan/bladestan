@@ -4,6 +4,7 @@ includes:
 parametersSchema:
     bladestan: structure([
         compiledViewPath: string()
+        reportUnanalysedTemplates: bool()
     ])
 
 parameters:
@@ -22,6 +23,10 @@ parameters:
     # analysed paths; without it, call-site signature validation still works.
     bladestan:
         compiledViewPath: %currentWorkingDirectory%/.bladestan
+        # Warn on stderr when `.bladestan` is missing from the analysed paths, so
+        # a template left unanalysed is a visible misconfiguration rather than a
+        # silent one. Set to false if you only want view() call-site validation.
+        reportUnanalysedTemplates: true
 
     bootstrapFiles:
         - ../bootstrap.php

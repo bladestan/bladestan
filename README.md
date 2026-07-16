@@ -39,7 +39,7 @@ Also add it to your `.gitignore`:
 That's it. Bladestan creates the `.bladestan` directory for you on the first run, so there is nothing to set up by hand. On each run it recompiles only the templates that changed, and PHPStan's result cache re-analyzes only what's affected.
 
 > [!NOTE]
-> The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
+> The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Bladestan warns when `.bladestan` is missing from your paths so the omission is not silent; if you only want call-site validation, set `parameters.bladestan.reportUnanalysedTemplates: false` to silence it. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
 
 > [!WARNING]
 > Add `.bladestan`, not your view directory. Your `resources/views` folder holds raw `.blade.php` source, which PHPStan cannot read as PHP: at best it reports nothing useful, at worst it reports errors that have nothing to do with your templates. If a view directory ends up in `paths`, Bladestan warns you so you can remove it. Templates are always analyzed from the compiled output, never from their source.
