@@ -208,6 +208,23 @@ final class SignatureExtractorTest extends TestCase
         $this->assertStringContainsString('<h1>{{ $name }}</h1>', $stripped);
     }
 
+    public function testStripSignatureBlockRoundTripsWithoutGrowingBlankLines(): void
+    {
+        // Mirrors the exact shape GenerateBladeSignaturesCommand::buildSignature()
+        // writes (4-space indent, one trailing newline after @endphp), so stripping
+        // it must reproduce the pre-signature content exactly. Otherwise each
+        // `--force` regenerate leaves one more blank line than the last.
+        // buildSignature() always emits the block followed by exactly one "\n"; the
+        // blank line here is the template's own content (e.g. left by blade-formatter)
+        // and must survive stripping untouched rather than being eaten as part of it.
+        $body = "\n<div>\n    hello\n</div>";
+        $signatureBlock = "@php\n    /**\n     * @bladestan-signature\n     * @var string \$name\n     */\n@endphp\n";
+
+        $stripped = $this->signatureExtractor->stripSignatureBlock($signatureBlock . $body);
+
+        $this->assertSame($body, $stripped);
+    }
+
     public function testStripSignatureBlockLeavesContentWithoutSignatureUnchanged(): void
     {
         $bladeContent = '<h1>Hello</h1>';

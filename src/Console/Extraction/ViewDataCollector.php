@@ -78,6 +78,17 @@ final class ViewDataCollector implements Collector
         foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
             $variables = [];
             foreach ($renderTemplateWithParameter->parametersArray as $variableName => $type) {
+                // ClassPropertiesResolver folds a class-backed call site's own public
+                // properties and Blade/Livewire internals ($slot, $attributes, $this, ...)
+                // into parametersArray, so ViewCallSiteRule doesn't false-positive when a
+                // component's render() calls view() without re-passing them. But those
+                // are supplied automatically by ComponentScopeResolver at compile time for
+                // every component template, so writing them into a generated signature
+                // would only duplicate what the template already gets for free.
+                if (BladeScopeVariables::isInternal($variableName)) {
+                    continue;
+                }
+
                 $variables[$variableName] = $this->describeType($type);
             }
 

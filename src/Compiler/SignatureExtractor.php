@@ -33,6 +33,14 @@ final class SignatureExtractor
     private const EXPLICIT_SIGNATURE_DOCBLOCK_REGEX = '/\/\*\*\s*\n\s*\*\s*@bladestan-signature\b.*?\*\//s';
 
     /**
+     * Same as {@see EXPLICIT_SIGNATURE_REGEX}, but also consumes the single newline
+     * `buildSignature()` always writes right after `@endphp`. Stripping must remove
+     * exactly what was added, or that newline accumulates as a blank line on every
+     * regenerate.
+     */
+    private const STRIP_EXPLICIT_SIGNATURE_REGEX = '/@php\s*\n\s*\/\*\*\s*\n\s*\*\s*@bladestan-signature\b.*?\*\/\s*\n\s*@endphp\n?/s';
+
+    /**
      * Matches @var Type in a docblock.
      *
      * @see https://regex101.com/r/kL9pQ2/1
@@ -98,8 +106,10 @@ final class SignatureExtractor
      */
     public function stripSignatureBlock(string $bladeContent): string
     {
-        // Try stripping @php ... @endphp block containing the signature
-        $stripped = preg_replace(self::EXPLICIT_SIGNATURE_REGEX, '', $bladeContent, 1);
+        // Try stripping @php ... @endphp block containing the signature, plus the
+        // one trailing newline buildSignature() adds after @endphp, so re-running
+        // the generator is idempotent instead of growing a blank line each time.
+        $stripped = preg_replace(self::STRIP_EXPLICIT_SIGNATURE_REGEX, '', $bladeContent, 1);
         if ($stripped !== null && $stripped !== $bladeContent) {
             return $stripped;
         }

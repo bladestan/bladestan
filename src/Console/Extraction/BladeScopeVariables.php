@@ -32,6 +32,7 @@ final class BladeScopeVariables
         'app',
         'message',
         'this',
+        '_instance',
     ];
 
     /**

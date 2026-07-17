@@ -65,6 +65,25 @@ final class ViewSignatureCollectedDataRuleTest extends RuleTestCase
         );
     }
 
+    public function testExcludesBladeInjectedInternalsFromHarvestedVariables(): void
+    {
+        // BackedComponent::render() calls $this->view('components.component', [...]).
+        // ClassPropertiesResolver folds 'slot' (and the class's own public
+        // properties) into that call site's parametersArray so ViewCallSiteRule
+        // doesn't false-positive on them, but they're supplied automatically by
+        // ComponentScopeResolver at compile time, so a generated signature must
+        // not declare them: only the explicitly passed data belongs there.
+        $signatures = $this->harvestSignatures(
+            __DIR__ . '/../../skeleton/app/View/Components/BackedComponent.php',
+        );
+
+        $this->assertArrayHasKey('components.component', $signatures);
+        self::assertSame(
+            ['a', 'b', 'c'],
+            array_keys($signatures['components.component']['variables']),
+        );
+    }
+
     public function testTypesScopeForwardedIncludePartial(): void
     {
         // A bare @include compiles to a scope-forwarding view() call in the
