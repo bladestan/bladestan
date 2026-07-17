@@ -82,8 +82,12 @@ what the steps below work through.
    Bladestan reminds you to pass this when it sees compiled templates being
    analyzed without a chosen format.
 
-4. **Fill the remaining gaps by hand.** See the next section for what the
-   generator handles and what it leaves for you.
+4. **Fill the remaining gaps by hand, then generate again.** See the next
+   section for what the generator handles and what it leaves for you. Because a
+   partial's types can depend on a signature you write by hand, the loop is:
+   generate, hand-sign the roots left as `mixed` (layouts, class-backed
+   components, `@extends` parents), then re-run with `--force` so those types
+   flow outward to everything downstream.
 
 ### What the generator covers, and what you sign by hand
 
@@ -121,12 +125,20 @@ itself unresolvable at the call site. It still declares the input (so it is no
 longer reported as undefined), but it checks nothing until you replace the
 `mixed` with a real type. Below level 9 you can leave these as-is.
 
+Expect a few new findings as types tighten. Once a variable is typed precisely
+(a non-empty array, a non-null object), PHPStan can prove a guard around it is
+always or never taken (`if.alwaysTrue`, `if.alwaysFalse`). That is correct, and
+usually points at a check the template no longer needs, but it is normal to
+adjudicate a handful of these after signing a large codebase.
+
 ### For AI coding agents
 
 Bladestan ships a signature guideline that [Laravel Boost](https://laravel.com/docs/boost)
-picks up automatically when you run `boost:install` (or `boost:update --discover`
-after adding Bladestan). For any other agent (Claude, Cursor, and the like), copy
-the block from
+loads when you run `boost:install`; running `boost:update --discover` after
+installing Bladestan offers to add it to an existing setup. This needs a Boost
+version new enough to discover third-party package guidelines; if `--discover`
+does not pick it up, copy the block by hand as below. For any other agent
+(Claude, Cursor, and the like), copy the block from
 [`resources/boost/guidelines/core.blade.php`](resources/boost/guidelines/core.blade.php)
 into your project's agent guidelines. It captures the rules that keep
 hand-written and agent-written signatures correct and parseable: type from real

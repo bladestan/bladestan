@@ -13,8 +13,10 @@ use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
 use function array_column;
+use function array_filter;
 use function array_key_exists;
 use function array_keys;
+use function array_values;
 use function count;
 use function explode;
 use function implode;
@@ -196,6 +198,13 @@ final class ViewSignatureCollectedDataRule implements Rule
      * parser-safe descriptions), with `null` kept last so the result reads as
      * `T|null`.
      *
+     * A site that resolves to `mixed` contributes nothing: `mixed` absorbs every
+     * type, so `App\Foo|mixed` would collapse to a bare `mixed` and throw away
+     * the one type another site pinned down, leaving a signature that looks typed
+     * but checks nothing. So `mixed` is dropped whenever a concrete type is known,
+     * and kept only when it is all there is (the honest "unresolved" result the
+     * author then replaces by hand).
+     *
      * @param list<array<string, string>> $maps
      * @return array<string, string>
      */
@@ -222,6 +231,18 @@ final class ViewSignatureCollectedDataRule implements Rule
 
         $merged = [];
         foreach ($typesByName as $name => $parts) {
+            if (in_array('mixed', $parts, true)) {
+                $concreteParts = array_values(array_filter($parts, static fn (string $part): bool => $part !== 'mixed'));
+                if ($concreteParts === []) {
+                    // Every site was unresolved: keep the honest bare mixed.
+                    // It already subsumes absence, so no `null` is appended.
+                    $merged[$name] = 'mixed';
+                    continue;
+                }
+
+                $parts = $concreteParts;
+            }
+
             if ($presenceByName[$name] < $siteCount && ! in_array('null', $parts, true)) {
                 $parts[] = 'null';
             }

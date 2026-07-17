@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests\Console\Extraction;
 
+use App\Models\User;
 use Bladestan\Console\Extraction\TemplateFreeVariableCollector;
 use Bladestan\Console\Extraction\ViewDataCollector;
 use Bladestan\Console\Extraction\ViewSignatureCollectedDataRule;
@@ -46,6 +47,22 @@ final class ViewSignatureCollectedDataRuleTest extends RuleTestCase
         }
 
         $this->addToAssertionCount(1);
+    }
+
+    public function testMixedNeverWidensAConcreteType(): void
+    {
+        $signatures = $this->harvestSignatures(__DIR__ . '/Fixture/render-sites.php');
+
+        // One site of 'bar' passes a User, the other a mixed value. The union
+        // must keep the concrete type rather than emit App\Models\User|mixed,
+        // which PHPStan would collapse to a bare mixed that checks nothing.
+        $this->assertArrayHasKey('bar', $signatures);
+        self::assertSame(
+            [
+                'thing' => User::class,
+            ],
+            $signatures['bar']['variables'],
+        );
     }
 
     public function testTypesScopeForwardedIncludePartial(): void

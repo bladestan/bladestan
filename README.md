@@ -39,7 +39,13 @@ Also add it to your `.gitignore`:
 .bladestan
 ```
 
-That's it. Bladestan creates the `.bladestan` directory for you on the first run and writes the compiled templates under `.bladestan/__templates__/`, so there is nothing to set up by hand. On each run it recompiles only the templates that changed, and PHPStan's result cache re-analyzes only what's affected.
+That's it. Bladestan creates the `.bladestan` directory for you on the first run and writes the compiled templates under `.bladestan/__templates__/`, so there is nothing to set up by hand. Compilation is incremental: each run recompiles only the templates whose source changed, and PHPStan's result cache re-analyzes only the files a change affects. Changing a template's signature is the one coarse case, because PHPStan cannot see which `view()` calls depend on a template, so a signature change re-analyzes everything. That is conservative but correct, and a finer-grained invalidation is planned upstream in PHPStan.
+
+> [!TIP]
+> In CI, cache the `.bladestan` directory and PHPStan's result cache between runs, the same way you cache `vendor`. Without them each run recompiles every template and analyzes it from scratch; with them, only what changed is redone.
+
+> [!NOTE]
+> Because the compiled templates sit under an analysed path, your own custom PHPStan rules run against them too, so a rule you wrote for your PHP now also checks your Blade templates. A rule that assumes hand-written PHP (for example one that forbids `echo`, which compiled Blade uses throughout) can exclude the `.bladestan` path where its findings are not useful.
 
 > [!NOTE]
 > The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Without it, call-site validation (see below) still works, but template bodies are not analyzed. Bladestan warns when `.bladestan` is missing from your paths so the omission is not silent; if you only want call-site validation, set `parameters.bladestan.reportUnanalysedTemplates: false` to silence it. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
@@ -99,6 +105,12 @@ In a package that has no `artisan` binary, run the command through Testbench fro
 ```bash
 vendor/bin/testbench bladestan:generate-signatures --path=src
 ```
+
+Signing is iterative. The command already runs in passes, so a partial is typed once its includers are. But when a type depends on a signature you write by hand (a layout, a class-backed component, an `@extends` root), run the command again afterwards so that type flows outward to everything downstream. Pass `--force` to refresh signatures that already exist. The rhythm is: generate, hand-sign the roots the generator left as `mixed`, then generate again.
+
+To find the type for a single variable by hand, add `\PHPStan\dumpType($data)` (or `\PHPStan\dumpType(get_defined_vars())`) just before the `view()` call, run `vendor/bin/phpstan analyse` over that controller, read the array shape it prints, and remove the dump. That is the same inference the generator automates across the whole app.
+
+A template that no call site renders has nothing to harvest, so it stays untyped. To tell a genuinely dead template apart from one that simply needs signing by hand, enable [Larastan](https://github.com/larastan/larastan)'s unused-views check (`parameters: checkUnusedViews: true`), which lists every view with no render site in the project.
 
 When writing signatures by hand or with an AI coding agent, the [signature guideline](resources/boost/guidelines/core.blade.php) captures the rules that keep the types correct and parseable. [Laravel Boost](https://laravel.com/docs/boost) picks it up automatically on `boost:install`; for any other agent, copy the block into your project's agent guidelines.
 
@@ -195,6 +207,9 @@ vendor/bin/phpstan analyse --error-format=blade
 ```
 
 Without it, template errors point at the compiled PHP under `.bladestan` instead of your `.blade.php` files, so Bladestan reminds you to pass `--error-format=blade` when it sees compiled templates being analyzed without a chosen format. Selecting any format, on the command line or with the `errorFormat` config parameter, silences the reminder.
+
+> [!NOTE]
+> The `blade` formatter is a human-readable table, so scripting against its output is brittle (long paths wrap across lines). PHPStan's machine-readable formatters (`json`, `raw`, and so on) give one line per error, but they report the compiled `.bladestan` path and line rather than the `.blade.php` source, because the remapping currently lives only in the `blade` formatter. Teaching every formatter to remap is proposed upstream ([phpstan/phpstan#14912](https://github.com/phpstan/phpstan/issues/14912)).
 
 ## Credits
 
