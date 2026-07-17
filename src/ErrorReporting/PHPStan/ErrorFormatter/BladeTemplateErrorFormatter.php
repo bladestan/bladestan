@@ -69,6 +69,12 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
      */
     public function formatErrors(AnalysisResult $analysisResult, Output $output): int
     {
+        // Known limitation: under a CI provider this emits inline annotations
+        // (GitHub `::error`, TeamCity) straight from the un-remapped errors, so
+        // those annotations point at the compiled PHP, not the .blade.php. The
+        // rendered table below IS remapped. Fixing the annotations would mean
+        // rebuilding every Error (no line setter) and the AnalysisResult, both
+        // PHPStan-internal value objects, purely for the CI path.
         $this->ciDetectedErrorFormatter->formatErrors($analysisResult, $output);
         $projectConfigFile = 'phpstan.neon';
         if ($analysisResult->getProjectConfigFile() !== null) {
