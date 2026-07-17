@@ -7,9 +7,13 @@ namespace Bladestan\Tests\Console;
 use Bladestan\Compiler\SignatureExtractor;
 use Bladestan\Console\Extraction\ViewSignatureCollectedDataRule;
 use Bladestan\Console\GenerateBladeSignaturesCommand;
+use Illuminate\Console\OutputStyle;
 use PHPStan\Testing\PHPStanTestCase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use ReflectionMethod;
+use ReflectionProperty;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\BufferedOutput;
 
 /**
  * Covers the command's pure decision logic — the mixed-type check, signature
@@ -225,6 +229,81 @@ final class GenerateBladeSignaturesCommandTest extends PHPStanTestCase
         self::assertSame("<p>{{ \$title }}</p>\n", file_get_contents($template), 'A dry run must not write');
     }
 
+    public function testApplySignatureWarnsWhenTheTemplateCannotBeRead(): void
+    {
+        $this->bindIo();
+
+        $wrote = $this->invoke('applySignature', $this->payload($this->tmpDir . '/missing.blade.php'), false, false);
+
+        self::assertFalse($wrote);
+    }
+
+    public function testResolveConfigFileReturnsTheExplicitConfigWhenItExists(): void
+    {
+        // getcwd() (the command's project root under test) is the repo root,
+        // which ships a phpstan.neon the --config value can point at.
+        $this->bindIo([
+            '--config' => 'phpstan.neon',
+        ]);
+
+        $resolved = $this->invoke('resolveConfigFile');
+
+        self::assertIsString($resolved);
+        self::assertStringEndsWith('/phpstan.neon', $resolved);
+    }
+
+    public function testResolveConfigFileReturnsNullWhenTheExplicitConfigIsMissing(): void
+    {
+        $this->bindIo([
+            '--config' => 'no-such-config.neon',
+        ]);
+
+        self::assertNull($this->invoke('resolveConfigFile'));
+    }
+
+    public function testResolveConfigFileFallsBackToAProjectConfig(): void
+    {
+        // With no --config, the usual project config names are tried against the
+        // working directory; the repo's own phpstan.neon is found.
+        $this->bindIo();
+
+        $resolved = $this->invoke('resolveConfigFile');
+
+        self::assertIsString($resolved);
+        self::assertStringEndsWith('/phpstan.neon', $resolved);
+    }
+
+    public function testExplicitScanPathsKeepsOnlyExistingPaths(): void
+    {
+        $this->bindIo([
+            '--path' => ['src', 'does-not-exist'],
+        ]);
+
+        $paths = $this->invoke('explicitScanPaths');
+
+        self::assertIsArray($paths);
+        self::assertCount(1, $paths);
+        self::assertIsString($paths[0]);
+        self::assertStringEndsWith('/src', $paths[0]);
+    }
+
+    public function testExplicitScanPathsIsNullWithoutThePathOption(): void
+    {
+        $this->bindIo();
+
+        self::assertNull($this->invoke('explicitScanPaths'));
+    }
+
+    public function testParsePayloadsReportsUnparsableOutput(): void
+    {
+        $bufferedOutput = $this->bindIo();
+
+        $payloads = $this->invoke('parsePayloads', 'not json at all', 'the stderr tail');
+
+        self::assertNull($payloads);
+        self::assertStringContainsString('did not return analysable output', $bufferedOutput->fetch());
+    }
+
     /**
      * @param array<string, string> $variables
      * @return array{template: string, view: string, variables: array<string, string>}
@@ -253,5 +332,26 @@ final class GenerateBladeSignaturesCommandTest extends PHPStanTestCase
         $reflectionMethod = new ReflectionMethod($this->generateBladeSignaturesCommand, $method);
 
         return $reflectionMethod->invoke($this->generateBladeSignaturesCommand, ...$args);
+    }
+
+    /**
+     * Give the command a real input (so `$this->option()` resolves) and a
+     * buffered output (so `$this->error()`/`warn()`/`line()` have somewhere to
+     * go), matching what Artisan wires up before handle() runs.
+     *
+     * @param array<string, string|list<string>> $parameters
+     */
+    private function bindIo(array $parameters = []): BufferedOutput
+    {
+        $arrayInput = new ArrayInput($parameters, $this->generateBladeSignaturesCommand->getDefinition());
+        $bufferedOutput = new BufferedOutput();
+
+        $inputProperty = new ReflectionProperty($this->generateBladeSignaturesCommand, 'input');
+        $inputProperty->setValue($this->generateBladeSignaturesCommand, $arrayInput);
+
+        $outputProperty = new ReflectionProperty($this->generateBladeSignaturesCommand, 'output');
+        $outputProperty->setValue($this->generateBladeSignaturesCommand, new OutputStyle($arrayInput, $bufferedOutput));
+
+        return $bufferedOutput;
     }
 }
