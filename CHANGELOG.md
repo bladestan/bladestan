@@ -7,39 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Analysis is now template-centric. Each Blade template is compiled once to
-standalone PHP under `.bladestan` and analysed on its own against the variables
-it declares, instead of being recompiled and re-analysed at every `view()` call.
-See [`UPGRADE.md`](UPGRADE.md) for the migration from 0.11.
+Analysis is now template-centric: each Blade template compiles once and is
+analysed on its own, against the variables it declares, instead of being
+recompiled and re-analysed at every `view()` call. See
+[`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
 
 ### Added
 
 - Templates declare their expected variables with a `@bladestan-signature`
-  docblock, and every `view()`, `View::make()`, `@include`, and Mailable call
-  site is validated against it. An `@extends` layout's signature is merged into
-  its children, so call sites must satisfy both.
-- `bladestan:generate-signatures` artisan command writes signatures from the
-  types your controllers already pass. It also signs `@include` partials from the
-  scope their includers forward, and scaffolds anonymous components from their
-  `@props` declaration.
-- `@includeFirst` call sites are validated, against the last (fallback) candidate
-  in the view list.
-- Blade error formatter (`--error-format=blade`) reports errors against the
-  original `.blade.php` file and line.
-- Warnings when `.bladestan` is missing from the analysed `paths`, when a raw
-  view directory is analysed directly, and when compiled templates are analysed
-  without a chosen error format.
-- The signature generator reports how many generated signatures carry only
-  `mixed` types, so load-bearing signatures are distinguished from those that
-  still need real types.
-- A signature guideline for AI coding agents, discovered automatically by
-  Laravel Boost and available to copy for any other agent.
+  docblock, validated at every `view()`, `View::make()`, `@include`,
+  `@includeFirst`, and Mailable call site.
+- `bladestan:generate-signatures` artisan command to generate signatures from
+  existing usage.
+- Errors are now reported directly against the `.blade.php` file and line
+  where they occur, instead of at the `view()` call site.
+- AI agent guidance for writing signatures, discoverable via Laravel Boost.
 
 ### Changed
 
-- The `.bladestan` compiled-template directory must be among PHPStan's analysed
-  `paths` for template bodies to be analysed. It is created automatically and
-  only changed templates are recompiled on each run.
+- `.bladestan` (the compiled template directory) must now be included in
+  PHPStan's analysed `paths`.
 
 ## [0.11.7] - 2026-07-18
 
@@ -255,25 +242,3 @@ projects that are not ready to upgrade stable.
 Initial release. Bladestan compiles each Blade template to PHP, runs PHPStan over
 the result, and maps the errors back to the original template. Based on earlier
 work by Can Vural (see Credits in the README).
-
-[Unreleased]: https://github.com/bladestan/bladestan/compare/0.11.6...HEAD
-[0.11.6]: https://github.com/bladestan/bladestan/compare/0.11.5...0.11.6
-[0.11.5]: https://github.com/bladestan/bladestan/compare/0.11.4...0.11.5
-[0.11.4]: https://github.com/bladestan/bladestan/compare/0.11.3...0.11.4
-[0.11.3]: https://github.com/bladestan/bladestan/compare/0.11.2...0.11.3
-[0.11.2]: https://github.com/bladestan/bladestan/compare/0.11.1...0.11.2
-[0.11.1]: https://github.com/bladestan/bladestan/compare/0.11.0...0.11.1
-[0.11.0]: https://github.com/bladestan/bladestan/compare/0.10.0...0.11.0
-[0.10.0]: https://github.com/bladestan/bladestan/compare/0.9.0...0.10.0
-[0.9.0]: https://github.com/bladestan/bladestan/compare/0.8.0...0.9.0
-[0.8.0]: https://github.com/bladestan/bladestan/compare/0.7.0...0.8.0
-[0.7.0]: https://github.com/bladestan/bladestan/compare/0.6.0...0.7.0
-[0.6.0]: https://github.com/bladestan/bladestan/compare/0.5.0...0.6.0
-[0.5.0]: https://github.com/bladestan/bladestan/compare/0.4.1...0.5.0
-[0.4.1]: https://github.com/bladestan/bladestan/compare/0.4.0...0.4.1
-[0.4.0]: https://github.com/bladestan/bladestan/compare/0.3.1...0.4.0
-[0.3.1]: https://github.com/bladestan/bladestan/compare/0.3.0...0.3.1
-[0.3.0]: https://github.com/bladestan/bladestan/compare/0.2.1...0.3.0
-[0.2.1]: https://github.com/bladestan/bladestan/compare/0.2.0...0.2.1
-[0.2.0]: https://github.com/bladestan/bladestan/compare/0.1.0...0.2.0
-[0.1.0]: https://github.com/bladestan/bladestan/releases/tag/0.1.0
