@@ -60,6 +60,18 @@ final class ViewCallSiteRuleTest extends RuleTestCase
             ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 14],
         ]];
 
+        // View factory and mailable method forms (make/first/renderWhen/
+        // renderUnless/markdown) each resolve the template and report the
+        // missing $user; renderEach forwards $key and the iterator var, which
+        // satisfy render-each-item's signature.
+        yield [__DIR__ . '/Fixture/view-call-site-view-methods.php', [
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 14],
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 20],
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 26],
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 32],
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 45],
+        ]];
+
         // A template extending a nonexistent layout is reported: its merged
         // contract is incomplete, so silence would hide unchecked variables.
         yield [__DIR__ . '/Fixture/view-call-site-extends-missing-layout.php', [
