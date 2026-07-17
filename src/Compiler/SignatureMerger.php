@@ -39,35 +39,12 @@ final class SignatureMerger
      */
     private array $mergedSignatureCache = [];
 
-    /**
-     * Memoized per-file signatures (no @extends walking).
-     *
-     * @var array<string, TemplateSignature>
-     */
-    private array $ownSignatureCache = [];
-
     public function __construct(
         private readonly SignatureExtractor $signatureExtractor,
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly TypeStringResolver $typeStringResolver,
         private readonly TypeStringValidator $typeStringValidator,
     ) {
-    }
-
-    /**
-     * The template's own signature, without walking the @extends chain.
-     * Memoized across call sites.
-     */
-    public function ownSignature(string $bladeFilePath): TemplateSignature
-    {
-        if (! isset($this->ownSignatureCache[$bladeFilePath])) {
-            $content = @file_get_contents($bladeFilePath);
-            $this->ownSignatureCache[$bladeFilePath] = $content === false
-                ? new TemplateSignature([])
-                : $this->signatureExtractor->extract($content);
-        }
-
-        return $this->ownSignatureCache[$bladeFilePath];
     }
 
     /**
@@ -101,9 +78,16 @@ final class SignatureMerger
      */
     private function doMergeForTemplate(string $bladeFilePath, array &$errors): TemplateSignature
     {
-        $chain = $this->resolveExtendsChain($bladeFilePath);
+        $chain = $this->resolveExtendsChain($bladeFilePath, $errors);
 
-        if (count($chain) <= 1) {
+        if ($chain === []) {
+            // The template became unreadable between resolution and merge
+            // (deleted, permissions, a race). Degrade to an empty signature
+            // rather than dereferencing a missing chain entry.
+            return new TemplateSignature([]);
+        }
+
+        if (count($chain) === 1) {
             // No @extends chain — return the template's own signature
             return $chain[0]['signature'];
         }
@@ -224,10 +208,12 @@ final class SignatureMerger
     /**
      * Walk the @extends chain starting from the given blade file.
      *
+     * @param list<string> $errors Collects an error when a parent template
+     *        cannot be resolved, since its contract then goes unenforced.
      * @return list<array{path: string, signature: TemplateSignature}>
      *         Index 0 is the starting template (child), last index is the deepest ancestor.
      */
-    private function resolveExtendsChain(string $bladeFilePath): array
+    private function resolveExtendsChain(string $bladeFilePath, array &$errors): array
     {
         $chain = [];
         $currentPath = $bladeFilePath;
@@ -261,6 +247,13 @@ final class SignatureMerger
             try {
                 $parentPath = $this->templateFilePathResolver->resolveExistingFilePath($parentViewName);
             } catch (InvalidArgumentException) {
+                // The parent's contract cannot be merged, so any variables it
+                // requires go unchecked. Report it rather than degrade silently.
+                $errors[] = sprintf(
+                    'Template %s extends %s, which does not exist.',
+                    basename($currentPath),
+                    $parentViewName,
+                );
                 break;
             }
 

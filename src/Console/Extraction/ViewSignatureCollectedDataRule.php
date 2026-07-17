@@ -18,7 +18,6 @@ use function array_key_exists;
 use function array_keys;
 use function array_values;
 use function count;
-use function explode;
 use function implode;
 use function in_array;
 use function json_encode;
@@ -221,7 +220,7 @@ final class ViewSignatureCollectedDataRule implements Rule
                 $presenceByName[$name] ??= 0;
                 $presenceByName[$name]++;
 
-                foreach (explode('|', $type) as $part) {
+                foreach ($this->splitTopLevelUnion($type) as $part) {
                     if (! in_array($part, $typesByName[$name], true)) {
                         $typesByName[$name][] = $part;
                     }
@@ -254,5 +253,38 @@ final class ViewSignatureCollectedDataRule implements Rule
         }
 
         return $merged;
+    }
+
+    /**
+     * Split a union type on its top-level `|` only. A naive explode would cut
+     * inside generics and array shapes (`array<int, User|Admin>`), and the
+     * dedup above could then drop a closing segment one generic shares with
+     * another, corrupting the merged type.
+     *
+     * @return list<string>
+     */
+    private function splitTopLevelUnion(string $type): array
+    {
+        $parts = [];
+        $depth = 0;
+        $current = '';
+
+        foreach (str_split($type) as $char) {
+            if (in_array($char, ['<', '(', '{'], true)) {
+                $depth++;
+            } elseif (in_array($char, ['>', ')', '}'], true)) {
+                $depth--;
+            } elseif ($char === '|' && $depth === 0) {
+                $parts[] = $current;
+                $current = '';
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        $parts[] = $current;
+
+        return $parts;
     }
 }

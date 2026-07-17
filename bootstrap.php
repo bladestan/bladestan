@@ -73,6 +73,19 @@ if ($bladestanShouldCompile && ! is_dir($bladestanCompiledViewPath)) {
     @mkdir($bladestanCompiledViewPath, 0777, true);
 }
 
+// Snapshot the registered error and exception handlers before the app is even
+// created. Booting the kernel (directly below, or inside Testbench's resolver
+// for packages) installs Laravel's global handlers, which have no business in
+// an analysis process: errors raised while PHPStan works would be routed into
+// the app's exception handling instead of PHPStan's own scoped handlers, and
+// PHPUnit (when this file loads inside a PHPStanTestCase) flags the leaked
+// handlers on every run. The set-then-restore pair reads the current handler
+// without changing the stack.
+$bladestanPreviousErrorHandler = set_error_handler(static fn (): bool => false);
+restore_error_handler();
+$bladestanPreviousExceptionHandler = set_exception_handler(null);
+restore_exception_handler();
+
 if (file_exists($applicationPath = getcwd() . '/bootstrap/app.php')) { // Applications and Local Dev
     $app = require $applicationPath;
 } elseif (file_exists(
@@ -90,6 +103,29 @@ if (isset($app)) {
         $app->boot();
     }
 
+    // Pop whatever the boot registered until the pre-boot handlers are back on
+    // top. Bounded so a handler stack this file does not understand can never
+    // loop forever.
+    for ($bladestanI = 0; $bladestanI < 16; $bladestanI++) {
+        $bladestanCurrentErrorHandler = set_error_handler(static fn (): bool => false);
+        restore_error_handler();
+        if ($bladestanCurrentErrorHandler === $bladestanPreviousErrorHandler) {
+            break;
+        }
+
+        restore_error_handler();
+    }
+
+    for ($bladestanI = 0; $bladestanI < 16; $bladestanI++) {
+        $bladestanCurrentExceptionHandler = set_exception_handler(null);
+        restore_exception_handler();
+        if ($bladestanCurrentExceptionHandler === $bladestanPreviousExceptionHandler) {
+            break;
+        }
+
+        restore_exception_handler();
+    }
+
     if (! defined('LARAVEL_VERSION')) {
         define('LARAVEL_VERSION', $app->version());
     }
@@ -104,6 +140,12 @@ if (isset($app)) {
 
     if (! $bladestanIsWorkerProcess) {
         $bladestanTemplateDiscovery = new TemplateDiscovery();
+
+        // The advisories below only make sense for a real analysis run. Other
+        // commands (clear-result-cache, diagnose) and other hosts of the PHPStan
+        // container (PHPStan's own test cases) load this bootstrap too, and a
+        // configuration warning there is pure noise.
+        $bladestanIsAnalyseCommand = in_array($bladestanArgv[1] ?? '', ['analyse', 'analyze'], true);
 
         // Advisory: raw `.blade.php` files must never be analysed directly.
         // Bladestan analyses templates from its compiled output under
@@ -122,14 +164,14 @@ if (isset($app)) {
                 array_values(array_map($bladestanNormalize, $bladestanTemplateDiscovery->getFilePaths())),
             );
 
-            foreach ($bladestanConflicts as $bladestanConflict) {
-                fwrite(STDERR, sprintf(
-                    "Bladestan: the analysed path \"%s\" contains raw Blade templates.\n"
-                    . "PHPStan parses .blade.php files as plain PHP, so any errors from them do not reflect your templates.\n"
-                    . 'Remove this path from PHPStan "paths" and add ".bladestan" instead. '
-                    . "Bladestan compiles your templates there and analyses them against their signatures.\n",
-                    $bladestanConflict,
-                ));
+            if ($bladestanIsAnalyseCommand) {
+                foreach ($bladestanConflicts as $bladestanConflict) {
+                    fwrite(STDERR, sprintf(
+                        'Warning: Bladestan found raw .blade.php files under analysed path "%s"; PHPStan reads them as plain PHP. '
+                        . "Remove it from \"paths\" and add \".bladestan\" instead.\n",
+                        $bladestanConflict,
+                    ));
+                }
             }
         } catch (Throwable) {
             // Template discovery failed (e.g. no bootable app) — skip the check.
@@ -140,16 +182,16 @@ if (isset($app)) {
         // raw view directory was already flagged above (that message tells the
         // user to add `.bladestan`), and let users who only want call-site
         // validation silence it with `bladestan.reportUnanalysedTemplates`.
-        if ($bladestanConflicts === []
+        if ($bladestanIsAnalyseCommand
+            && $bladestanConflicts === []
             && $bladestanExtensionLoaded
             && ! $bladestanShouldCompile
             && $bladestanReportUnanalysed
         ) {
             fwrite(
                 STDERR,
-                "Bladestan: \".bladestan\" is not among PHPStan's analysed paths, so your Blade template bodies are not analysed (view() call sites are still checked).\n"
-                . "Add \".bladestan\" to \"paths\" in your PHPStan config to analyse your templates.\n"
-                . "If you only want call-site validation, set parameters.bladestan.reportUnanalysedTemplates to false to silence this message.\n",
+                'Warning: Bladestan is not analysing your Blade template bodies because ".bladestan" is missing from PHPStan "paths" (view() call sites are still checked). '
+                . "Add it to analyse your templates, or set parameters.bladestan.reportUnanalysedTemplates: false to silence.\n",
             );
         }
 
@@ -157,7 +199,7 @@ if (isset($app)) {
         // chosen, so errors will point at the compiled PHP instead of the
         // original template. Only `--error-format=blade` remaps them. Choosing
         // any format (on the CLI or in config) means the user picked their
-        // output and silences this. Commands that don't analyse are skipped.
+        // output and silences this.
         $bladestanErrorFormatOnCli = false;
         foreach ($bladestanArgv as $bladestanArg) {
             if ($bladestanArg === '--error-format' || str_starts_with((string) $bladestanArg, '--error-format=')) {
@@ -166,17 +208,15 @@ if (isset($app)) {
             }
         }
 
-        $bladestanNonAnalysingCommands = ['clear-result-cache', 'dump-parameters', 'diagnose', 'completion', 'help', 'list'];
-        if ($bladestanShouldCompile
+        if ($bladestanIsAnalyseCommand
+            && $bladestanShouldCompile
             && ! $bladestanErrorFormatOnCli
             && ! $bladestanErrorFormatConfigured
-            && ! in_array($bladestanArgv[1] ?? '', $bladestanNonAnalysingCommands, true)
         ) {
             fwrite(
                 STDERR,
-                "Bladestan: analysing compiled templates in \".bladestan\" without \"--error-format=blade\".\n"
-                . "Errors inside templates will point at the compiled PHP under \".bladestan\", not your \".blade.php\" files.\n"
-                . "Run PHPStan with \"--error-format=blade\" to map errors back to the original template and line.\n",
+                'Note: Bladestan is analysing ".bladestan" without "--error-format=blade", so template errors point at the compiled PHP, not your ".blade.php" files. '
+                . "Pass \"--error-format=blade\" to map them back.\n",
             );
         }
 

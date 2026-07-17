@@ -127,11 +127,6 @@ services:
     - Bladestan\Discovery\TemplateDiscovery
 
     -
-        class: Bladestan\Configuration\BladestanConfiguration
-        arguments:
-            compiledViewPath: %bladestan.compiledViewPath%
-
-    -
         class: Bladestan\PhpParser\NodeVisitor\ViewFunctionArgumentsNodeVisitor
         tags:
             - phpstan.parser.richParserNodeVisitor

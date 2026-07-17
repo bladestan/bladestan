@@ -347,5 +347,47 @@ final class SignatureExtractorTest extends TestCase
                 'iter' => '\Countable&\Iterator',
             ],
         ];
+
+        yield 'closure type with named parameter' => [
+            '@var \Closure(\App\Models\User $user): string $callback',
+            [
+                'callback' => '\Closure(\App\Models\User $user): string',
+            ],
+        ];
+
+        yield 'type with trailing description' => [
+            '@var string $title The page title',
+            [
+                'title' => 'string',
+            ],
+        ];
+    }
+
+    public function testExplicitSignatureMarkerAfterDescriptionLine(): void
+    {
+        $bladeContent = <<<'BLADE'
+            @php
+            /**
+             * The user profile card.
+             *
+             * @bladestan-signature
+             * @var string $name
+             */
+            @endphp
+
+            <h1>{{ $name }}</h1>
+            BLADE;
+
+        $templateSignature = $this->signatureExtractor->extract($bladeContent);
+
+        $this->assertTrue($templateSignature->isExplicit);
+        $this->assertSame([
+            'name' => 'string',
+        ], $templateSignature->variables);
+        $this->assertTrue($this->signatureExtractor->hasExplicitSignature($bladeContent));
+        $this->assertStringNotContainsString(
+            '@bladestan-signature',
+            $this->signatureExtractor->stripSignatureBlock($bladeContent),
+        );
     }
 }

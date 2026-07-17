@@ -35,3 +35,19 @@ view('bar', [
 view('bar', [
     'thing' => mixedValue(),
 ]);
+
+// Two sites of view 'static_content' pass generics that carry a union inside
+// their type arguments, sharing the trailing `int>` segment. The merge must
+// union them at the top level only; splitting on every `|` would dedup that
+// shared segment away and corrupt the type.
+/** @var array<int, User|int> $arrayItems */
+$arrayItems = [];
+view('static_content', [
+    'items' => $arrayItems,
+]);
+
+/** @var \Illuminate\Support\Collection<int, string|int> $collectionItems */
+$collectionItems = new \Illuminate\Support\Collection();
+view('static_content', [
+    'items' => $collectionItems,
+]);

@@ -7,6 +7,8 @@ namespace Bladestan\NodeAnalyzer;
 use Bladestan\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Support\Facades\Response as ResponseFacades;
 use Illuminate\Support\Facades\View;
+use Illuminate\View\Component;
+use Livewire\Component as LivewireComponent;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
@@ -78,9 +80,16 @@ final class LaravelViewFunctionMatcher
             $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
         }
 
+        // Only a component's template receives the enclosing class's public
+        // properties: Livewire merges them into the render view, and a class
+        // component's view is rendered with the component's data(). A plain
+        // controller's properties never reach the view, so folding them there
+        // would hide genuinely missing parameters.
         if ($scope->isInClass()) {
-            $nativeReflection = $scope->getClassReflection();
-            $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
+            $classReflection = $scope->getClassReflection();
+            if ($classReflection->is(Component::class) || $classReflection->is(LivewireComponent::class)) {
+                $parametersArray += $this->classPropertiesResolver->resolve($classReflection, $scope);
+            }
         }
 
         // view($name, $data, get_defined_vars()) forwards the surrounding

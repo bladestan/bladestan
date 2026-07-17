@@ -107,17 +107,13 @@ final class ViewCallSiteRule implements Rule
             ];
         }
 
-        // Only validate call sites when the template has an explicit signature
-        // or an implicit first-docblock signature
-        $templateSignature = $this->signatureMerger->ownSignature($bladeFilePath);
-        if ($templateSignature->isEmpty()) {
-            // Template has no signature — nothing to validate against
-            return [];
-        }
-
-        // Get merged signature (walks @extends chain)
+        // Validate against the merged signature (the template's own, combined
+        // with its @extends chain). A child that declares nothing of its own
+        // still inherits its layout's contract: Blade forwards the child's
+        // whole scope to the layout, so a call site missing a layout-required
+        // variable is just as broken as one missing the child's own.
         $mergeErrors = [];
-        $mergedSignature = $this->signatureMerger->mergeForTemplate($bladeFilePath, $mergeErrors);
+        $templateSignature = $this->signatureMerger->mergeForTemplate($bladeFilePath, $mergeErrors);
 
         $errors = [];
 
@@ -129,7 +125,7 @@ final class ViewCallSiteRule implements Rule
         }
 
         // If the merged signature is empty (all merge errors?), skip call-site validation
-        if ($mergedSignature->isEmpty()) {
+        if ($templateSignature->isEmpty()) {
             return $errors;
         }
 
@@ -137,7 +133,7 @@ final class ViewCallSiteRule implements Rule
         // as a localized error and drop it from the checks below, so the rest
         // of the signature (and every other call site) is still validated.
         $invalidTypes = [];
-        foreach ($mergedSignature->variables as $varName => $expectedTypeString) {
+        foreach ($templateSignature->variables as $varName => $expectedTypeString) {
             if ($this->resolveTypeString($expectedTypeString) instanceof Type) {
                 continue;
             }
@@ -159,7 +155,7 @@ final class ViewCallSiteRule implements Rule
 
         // Validate: check types of provided variables
         foreach ($providedParams as $varName => $providedType) {
-            $expectedTypeString = $mergedSignature->variables[$varName] ?? null;
+            $expectedTypeString = $templateSignature->variables[$varName] ?? null;
             if ($expectedTypeString === null) {
                 // Variable provided but not in signature — not an error,
                 // extra variables are allowed (they're just unused)
@@ -192,7 +188,7 @@ final class ViewCallSiteRule implements Rule
         }
 
         // Validate: check for missing required variables
-        foreach ($mergedSignature->variables as $varName => $expectedTypeString) {
+        foreach ($templateSignature->variables as $varName => $expectedTypeString) {
             if (isset($providedParams[$varName])) {
                 continue;
             }

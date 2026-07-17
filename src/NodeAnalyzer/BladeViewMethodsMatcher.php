@@ -198,6 +198,14 @@ final class BladeViewMethodsMatcher
 
         $args = $methodCall->getArgs();
 
+        // renderEach($view, $data, $iterator, $empty) needs at least the view,
+        // data, and iterator name. A malformed call with fewer arguments is a
+        // type error PHPStan reports on its own; deriving loop variables from
+        // the missing arguments here would only crash the run.
+        if (count($args) < 3) {
+            return $values;
+        }
+
         $valueName = null;
         if ($args[2]->value instanceof String_) {
             $valueName = $args[2]->value->value;

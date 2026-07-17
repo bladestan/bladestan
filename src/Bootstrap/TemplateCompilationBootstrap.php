@@ -221,11 +221,23 @@ final class TemplateCompilationBootstrap
         return $manifest;
     }
 
+    /**
+     * Remove only what Bladestan owns: the generated-output root and the
+     * manifest. The wipe must never touch anything else, because a
+     * misconfigured `compiledViewPath` can point at a directory with user
+     * files in it, and the missing manifest that triggers this wipe is
+     * exactly what a first run against such a directory looks like.
+     */
     private function removeAllCompiledFiles(): void
     {
+        @unlink($this->compiledViewPath . '/' . self::MANIFEST_FILE);
+
         try {
             $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($this->compiledViewPath, FilesystemIterator::SKIP_DOTS),
+                new RecursiveDirectoryIterator(
+                    $this->compiledViewPath . '/' . self::OUTPUT_ROOT,
+                    FilesystemIterator::SKIP_DOTS
+                ),
                 RecursiveIteratorIterator::CHILD_FIRST,
             );
         } catch (UnexpectedValueException) {

@@ -42,10 +42,38 @@ final class ViewCallSiteRuleTest extends RuleTestCase
         // Template without signature — no errors from ViewCallSiteRule
         yield [__DIR__ . '/Fixture/view-call-site-no-signature.php', []];
 
+        // A controller's public $user property does not reach the view, so the
+        // template's required $user is still missing.
+        yield [__DIR__ . '/Fixture/view-call-site-controller-property.php', [
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 19],
+        ]];
+
         // Template extending a layout — the merged signature requires the
         // layout's $siteName; the child's string $title narrows ?string.
         yield [__DIR__ . '/Fixture/view-call-site-extends-missing-parent-param.php', [
             ['Template extends-template requires parameter $siteName of type string, but it was not provided.', 11],
+        ]];
+
+        // Mailable Content: the view name is recognized positionally and via
+        // view:, and with: supplies the data.
+        yield [__DIR__ . '/Fixture/view-call-site-mailable-content.php', [
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 14],
+        ]];
+
+        // A template extending a nonexistent layout is reported: its merged
+        // contract is incomplete, so silence would hide unchecked variables.
+        yield [__DIR__ . '/Fixture/view-call-site-extends-missing-layout.php', [
+            ['Template extends-missing-layout.blade.php extends layouts.does-not-exist, which does not exist.', 11],
+        ]];
+
+        // A child with no signature of its own still inherits its layout's
+        // contract: the call site provides $title but not the layout-required
+        // $siteName.
+        yield [__DIR__ . '/Fixture/view-call-site-unsigned-extends.php', [
+            [
+                'Template unsigned-extends-template requires parameter $siteName of type string, but it was not provided.',
+                12,
+            ],
         ]];
 
         // An unparsable type in a signature is reported as a localized error

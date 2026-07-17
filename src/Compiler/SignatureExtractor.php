@@ -5,9 +5,24 @@ declare(strict_types=1);
 namespace Bladestan\Compiler;
 
 use Bladestan\ValueObject\TemplateSignature;
+use PHPStan\PhpDocParser\Ast\PhpDoc\InvalidTagValueNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\PhpDocTagNode;
+use PHPStan\PhpDocParser\Ast\PhpDoc\VarTagValueNode;
+use PHPStan\PhpDocParser\Lexer\Lexer;
+use PHPStan\PhpDocParser\Parser\ConstExprParser;
+use PHPStan\PhpDocParser\Parser\PhpDocParser;
+use PHPStan\PhpDocParser\Parser\TokenIterator;
+use PHPStan\PhpDocParser\Parser\TypeParser;
+use PHPStan\PhpDocParser\ParserConfig;
+use PHPStan\PhpDocParser\Printer\Printer;
 
 /**
- * Extracts template signatures from blade files via fast string/regex scanning.
+ * Extracts template signatures from blade files.
+ *
+ * The signature blocks are located with fast string/regex scanning; the @var
+ * tags inside them are parsed with PHPStan's own PHPDoc parser, so any type it
+ * understands (including closure signatures whose parameters carry `$` names)
+ * is read exactly as PHPStan will later interpret it.
  *
  * Resolution priority:
  * 1. `@bladestan-signature` docblock (explicit)
@@ -19,18 +34,18 @@ use Bladestan\ValueObject\TemplateSignature;
 final class SignatureExtractor
 {
     /**
-     * Matches a @php ... @endphp block containing a docblock with @bladestan-signature.
-     *
-     * @see https://regex101.com/r/xQ3mR7/1
+     * Matches a @php ... @endphp block containing a docblock with
+     * @bladestan-signature anywhere among its lines (a leading description is
+     * fine). Group 1 is the docblock itself.
      */
-    private const EXPLICIT_SIGNATURE_REGEX = '/@php\s*\n\s*\/\*\*\s*\n\s*\*\s*@bladestan-signature\b.*?\*\/\s*\n\s*@endphp/s';
+    private const EXPLICIT_SIGNATURE_REGEX = '/@php\s*\n\s*(\/\*\*(?:(?!\*\/)[\s\S])*?@bladestan-signature\b[\s\S]*?\*\/)\s*\n\s*@endphp/';
 
     /**
      * Matches a standalone docblock with @bladestan-signature (without @php wrapper).
      * This handles cases where the docblock is inside a @php block that also contains other code,
      * or in compiled/raw PHP contexts.
      */
-    private const EXPLICIT_SIGNATURE_DOCBLOCK_REGEX = '/\/\*\*\s*\n\s*\*\s*@bladestan-signature\b.*?\*\//s';
+    private const EXPLICIT_SIGNATURE_DOCBLOCK_REGEX = '/\/\*\*(?:(?!\*\/)[\s\S])*?@bladestan-signature\b[\s\S]*?\*\//';
 
     /**
      * Same as {@see EXPLICIT_SIGNATURE_REGEX}, but also consumes the single newline
@@ -38,12 +53,12 @@ final class SignatureExtractor
      * exactly what was added, or that newline accumulates as a blank line on every
      * regenerate.
      */
-    private const STRIP_EXPLICIT_SIGNATURE_REGEX = '/@php\s*\n\s*\/\*\*\s*\n\s*\*\s*@bladestan-signature\b.*?\*\/\s*\n\s*@endphp\n?/s';
+    private const STRIP_EXPLICIT_SIGNATURE_REGEX = '/@php\s*\n\s*\/\*\*(?:(?!\*\/)[\s\S])*?@bladestan-signature\b[\s\S]*?\*\/\s*\n\s*@endphp\n?/';
 
     /**
-     * Matches @var Type in a docblock.
-     *
-     * @see https://regex101.com/r/kL9pQ2/1
+     * Fallback for a @var line whose type PHPStan's parser rejects. The lazy
+     * type group cannot handle a `$` inside the type, but an invalid type
+     * still has to reach the signature so the rule can report it.
      */
     private const VAR_TAG_REGEX = '/@var\s+(.+?)\s+\$([a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*)/';
 
@@ -63,6 +78,31 @@ final class SignatureExtractor
      * Matches @props([...]) directives (single-line form).
      */
     private const PROPS_REGEX = '/@props\s*\(.*?\)/s';
+
+    private readonly Lexer $phpDocLexer;
+
+    private readonly PhpDocParser $phpDocParser;
+
+    private readonly Printer $phpDocPrinter;
+
+    /**
+     * The parser chain is built here rather than injected because this class
+     * runs in three hosts: PHPStan's DI container, the plain bootstrap file,
+     * and the Laravel container behind the artisan command. Constructing the
+     * stateless parser locally keeps one canonical setup instead of three.
+     */
+    public function __construct()
+    {
+        $parserConfig = new ParserConfig([]);
+        $constExprParser = new ConstExprParser($parserConfig);
+        $this->phpDocLexer = new Lexer($parserConfig);
+        $this->phpDocParser = new PhpDocParser(
+            $parserConfig,
+            new TypeParser($parserConfig, $constExprParser),
+            $constExprParser,
+        );
+        $this->phpDocPrinter = new Printer();
+    }
 
     /**
      * Extract the template signature from blade file content.
@@ -190,9 +230,9 @@ final class SignatureExtractor
 
     private function extractExplicitSignature(string $bladeContent): ?TemplateSignature
     {
-        // First try the @php-wrapped form
+        // First try the @php-wrapped form (group 1 is the docblock)
         if (preg_match(self::EXPLICIT_SIGNATURE_REGEX, $bladeContent, $matches) === 1) {
-            $variables = $this->extractVarTags($matches[0]);
+            $variables = $this->extractVarTags($matches[1]);
             return new TemplateSignature($variables, isExplicit: true);
         }
 
@@ -224,20 +264,60 @@ final class SignatureExtractor
     /**
      * Extract all @var Type declarations from a docblock string.
      *
+     * Parsed with PHPStan's PHPDoc parser, so types are read exactly as the
+     * analysis will later interpret them, including closure signatures whose
+     * parameters carry `$` names and trailing tag descriptions. A @var whose
+     * type the parser rejects is recovered with a best-effort regex: the
+     * invalid type string must still enter the signature so the rule can
+     * report it instead of silently dropping the variable.
+     *
      * @return array<string, string> Variable name => type string
      */
     private function extractVarTags(string $docblock): array
     {
-        $variables = [];
+        $tokens = new TokenIterator($this->phpDocLexer->tokenize($docblock));
+        $phpDocNode = $this->phpDocParser->parse($tokens);
 
+        $variables = [];
+        foreach ($phpDocNode->children as $child) {
+            if (! $child instanceof PhpDocTagNode) {
+                continue;
+            }
+
+            if ($child->name !== '@var') {
+                continue;
+            }
+
+            $value = $child->value;
+            if ($value instanceof VarTagValueNode) {
+                $name = ltrim($value->variableName, '$');
+                if ($name !== '') {
+                    $variables[$name] = $this->phpDocPrinter->print($value->type);
+                }
+
+                continue;
+            }
+
+            if ($value instanceof InvalidTagValueNode) {
+                $variables += $this->extractVarTagsByRegex('@var ' . $value->value);
+            }
+        }
+
+        return $variables;
+    }
+
+    /**
+     * @return array<string, string> Variable name => type string
+     */
+    private function extractVarTagsByRegex(string $docblock): array
+    {
         if (preg_match_all(self::VAR_TAG_REGEX, $docblock, $matches, PREG_SET_ORDER) === 0) {
             return [];
         }
 
+        $variables = [];
         foreach ($matches as $match) {
-            $type = trim($match[1]);
-            $name = $match[2];
-            $variables[$name] = $type;
+            $variables[$match[2]] = trim($match[1]);
         }
 
         return $variables;

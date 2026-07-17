@@ -70,6 +70,24 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringNotContainsString('$__env->first', $compiled);
     }
 
+    public function testIncludeWhenWithDataKeepsScopeForwarding(): void
+    {
+        $compiled = $this->compileView('include_when_with_data');
+
+        // @includeWhen/@includeUnless with explicit data still forward the
+        // surrounding scope, so the compiled view() call must keep both the
+        // explicit data and get_defined_vars(). Dropping the forwarding arg
+        // would make the partial's other signature variables look unprovided.
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 10], get_defined_vars());",
+            $compiled
+        );
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 20], get_defined_vars());",
+            $compiled
+        );
+    }
+
     public function testExtendsIsStrippedNotCompiledAsCallSite(): void
     {
         $compiled = $this->compileView('extends-template');

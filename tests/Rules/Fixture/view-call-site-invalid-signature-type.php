@@ -11,7 +11,7 @@ use function view;
 // The template's $items type is not a valid PHPDoc type (a template
 // placeholder rendered by dumpType and copied verbatim). It must be reported
 // as a localized error, and the run must continue: the wrong type for $title
-// below still has to be caught, proving one bad type no longer aborts the
+// below still has to be caught, proving one bad type does not aborts the
 // analysis.
 view('invalid-signature-type', [
     'title' => 42,

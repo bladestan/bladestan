@@ -16,9 +16,9 @@ use UnexpectedValueException;
 /**
  * Discovers all blade templates in the project using Laravel's ViewFinder.
  *
- * Returns both file paths and resolved view names, enabling the bootstrap
- * compiler to process each template and the call-site rule to resolve
- * view names back to file paths.
+ * Returns a mapping of absolute file path to view name, which the bootstrap
+ * compiler walks to compile every template and the signature generator reuses
+ * to find templates to annotate.
  */
 final class TemplateDiscovery
 {
@@ -66,20 +66,6 @@ final class TemplateDiscovery
     }
 
     /**
-     * Get the absolute file path for a given view name.
-     *
-     * @return string|null The absolute file path, or null if not found
-     * @throws UnexpectedValueException
-     */
-    public function resolveFilePath(string $viewName): ?string
-    {
-        $map = $this->discoverTemplates();
-        $flipped = array_flip($map);
-
-        return $flipped[$viewName] ?? null;
-    }
-
-    /**
      * Get all discovered absolute file paths.
      *
      * @return list<string>
@@ -90,31 +76,6 @@ final class TemplateDiscovery
         return array_keys($this->discoverTemplates());
     }
 
-    /**
-     * Get the view name for a given absolute file path.
-     *
-     * @return string|null The view name, or null if not a discovered template
-     * @throws UnexpectedValueException
-     */
-    public function resolveViewName(string $absoluteFilePath): ?string
-    {
-        $map = $this->discoverTemplates();
-        $normalized = realpath($absoluteFilePath) ?: $absoluteFilePath;
-
-        return $map[$normalized] ?? null;
-    }
-
-    /**
-     * Clear the cached template map, forcing re-discovery on next call.
-     */
-    public function clearCache(): void
-    {
-        $this->templateMap = null;
-    }
-
-    /**
-     * @throws \UnexpectedValueException
-     */
     /**
      * @param array<string, string> $map
      * @throws UnexpectedValueException

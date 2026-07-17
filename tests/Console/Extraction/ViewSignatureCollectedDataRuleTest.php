@@ -65,6 +65,24 @@ final class ViewSignatureCollectedDataRuleTest extends RuleTestCase
         );
     }
 
+    public function testUnionsGenericTypesAtTheTopLevelOnly(): void
+    {
+        $signatures = $this->harvestSignatures(__DIR__ . '/Fixture/render-sites.php');
+
+        // The two sites pass array<int, User|int> and Collection<int, string|int>,
+        // whose inner unions share a trailing `int>` segment. A naive split on
+        // every `|` would dedup that segment away and corrupt the merged type.
+        $this->assertArrayHasKey('static_content', $signatures);
+
+        $type = $signatures['static_content']['variables']['items'];
+        self::assertStringContainsString('array<int, App\Models\User|int>', $type);
+        self::assertStringContainsString('Illuminate\Support\Collection<int, int|string>', $type);
+
+        // And the merged union must still resolve as a PHPDoc type.
+        self::getContainer()->getByType(TypeStringResolver::class)->resolve($type);
+        $this->addToAssertionCount(1);
+    }
+
     public function testExcludesBladeInjectedInternalsFromHarvestedVariables(): void
     {
         // BackedComponent::render() calls $this->view('components.component', [...]).
