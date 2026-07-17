@@ -97,12 +97,16 @@ final class ComponentScopeResolver
         $scope['slot'] = '\\' . ComponentSlot::class;
         $scope['componentName'] = 'string';
 
-        // A compiled `@props` block already defines `$attributes` (it opens with
-        // `$attributes ??= new ComponentAttributeBag()`), so only declare it for
-        // component bodies without `@props`.
-        if ($props === null) {
-            $scope['attributes'] = '\\' . ComponentAttributeBag::class;
+        // `$attributes` is a component-body variable like `$slot`, so the scope
+        // declares it authoritatively rather than leaning on the compiled
+        // `@props` output. Blade's `@props` block opens with
+        // `$attributes ??= new ComponentAttributeBag()`, which types it in the
+        // common case, but that shape is version-dependent; declaring it here
+        // keeps `$attributes` typed regardless. The signature still wins, so an
+        // author who needs a narrower type can override it.
+        $scope['attributes'] = '\\' . ComponentAttributeBag::class;
 
+        if ($props === null) {
             return $scope;
         }
 

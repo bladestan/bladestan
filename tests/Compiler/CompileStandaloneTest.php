@@ -95,9 +95,21 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString('/** @var mixed $title */', $compiled);
         $this->assertStringContainsString('/** @var bool $dismissible */', $compiled);
 
-        // The compiled @props block already defines $attributes, so it is not
-        // re-declared as an @var.
-        $this->assertStringNotContainsString('@var \Illuminate\View\ComponentAttributeBag $attributes', $compiled);
+        // $attributes is declared even though @props is present, so the body
+        // stays typed no matter how Blade compiled the @props block.
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
+    }
+
+    public function testPropsComponentWithSignatureKeepsAttributesTyped(): void
+    {
+        $compiled = $this->compileView('components.signed-props');
+
+        // The signature types the props, and $attributes is still declared as
+        // ComponentAttributeBag even though the signature omits it, so the body
+        // does not fall back to reading an untyped $attributes.
+        $this->assertStringContainsString('/** @var string $title */', $compiled);
+        $this->assertStringContainsString('/** @var string $price */', $compiled);
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
     }
 
     public function testClassComponentBodyGetsReflectedMembers(): void

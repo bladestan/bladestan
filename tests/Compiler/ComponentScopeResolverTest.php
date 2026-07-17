@@ -21,7 +21,7 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         $this->componentScopeResolver = self::getContainer()->getByType(ComponentScopeResolver::class);
     }
 
-    public function testPropsGiveTypedScopeAndSlotButNotAttributes(): void
+    public function testPropsGiveTypedScopeSlotAndAttributes(): void
     {
         $scope = $this->componentScopeResolver->resolve(
             'components.alert',
@@ -36,9 +36,9 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         $this->assertSame('array', $scope['items'] ?? null);
         $this->assertSame('bool', $scope['open'] ?? null);
 
-        // The compiled @props block defines $attributes itself, so it is not
-        // re-declared here.
-        $this->assertArrayNotHasKey('attributes', $scope);
+        // $attributes is declared authoritatively even with @props present, so
+        // the body keeps it typed regardless of the compiled @props shape.
+        $this->assertSame('\\' . ComponentAttributeBag::class, $scope['attributes'] ?? null);
     }
 
     public function testPropsSignatureReturnsOnlyPropsTypedFromDefaults(): void

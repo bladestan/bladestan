@@ -75,7 +75,7 @@ parameters:
             path: %bladestan.compiledViewPath%/*
             reportUnmatched: false
         # Blade's @props block opens with `$attributes ??= new ComponentAttributeBag()`.
-        # When a signature also declares $attributes, that guard reads as redundant.
+        # The component scope declares $attributes, so that guard reads as redundant.
         -
             message: '#^Variable \$[^ ]+ on left side of \?\?= always exists and is not nullable\.$#'
             path: %bladestan.compiledViewPath%/*
