@@ -44,7 +44,7 @@ final class GenerateBladeSignaturesCommand extends Command
      * @var string
      */
     protected $signature = 'bladestan:generate-signatures
-        {--path=* : Directories or files to scan for render calls (default: app)}
+        {--path=* : Directories or files to scan for render calls (default: the paths already configured in the PHPStan config)}
         {--phpstan=vendor/bin/phpstan : Path to the PHPStan binary}
         {--config= : PHPStan config file (auto-detected when omitted)}
         {--force : Overwrite templates that already have a signature}
@@ -72,7 +72,7 @@ final class GenerateBladeSignaturesCommand extends Command
             return self::FAILURE;
         }
 
-        $scanPaths = $this->scanPaths();
+        $scanPaths = $this->explicitScanPaths();
         $dryRun = (bool) $this->option('dry-run');
         $force = (bool) $this->option('force');
 
@@ -105,7 +105,7 @@ final class GenerateBladeSignaturesCommand extends Command
             $this->info(sprintf(
                 'Harvesting view() and @include types with PHPStan (pass %d, scanning %s)...',
                 $pass,
-                implode(', ', $scanPaths),
+                $scanPaths !== null ? implode(', ', $scanPaths) : "the PHPStan config's own paths",
             ));
 
             $payloads = $this->harvest($configFile, $scanPaths);
@@ -293,14 +293,20 @@ final class GenerateBladeSignaturesCommand extends Command
     }
 
     /**
-     * @return list<string> Absolute scan paths (directories or files).
+     * `--path` narrows the scan to specific directories or files, overriding
+     * the PHPStan config's own `paths`. Without it, the config's own `paths`
+     * are reused as-is (wildcards in `excludePaths` and everything else
+     * included), so a project only has to keep one list of analysed paths.
+     *
+     * @return list<string>|null Absolute scan paths, or null when `--path`
+     *         was not given and the config's own paths should be used.
      */
-    private function scanPaths(): array
+    private function explicitScanPaths(): ?array
     {
         /** @var list<string> $paths */
         $paths = (array) $this->option('path');
         if ($paths === []) {
-            $paths = ['app'];
+            return null;
         }
 
         return array_values(array_filter(
@@ -313,12 +319,13 @@ final class GenerateBladeSignaturesCommand extends Command
      * Run PHPStan once with the signature collector registered and read the
      * harvested signatures back from its JSON output.
      *
-     * @param list<string> $scanPaths
+     * @param list<string>|null $scanPaths Explicit `--path` override, or null
+     *        to reuse the PHPStan config's own paths.
      * @return list<array{template: string, view: string, variables: array<string, string>}>|null
      *         Null when the analysis could not be run or its output could not be
      *         understood (already reported to the user).
      */
-    private function harvest(string $configFile, array $scanPaths): ?array
+    private function harvest(string $configFile, ?array $scanPaths): ?array
     {
         if ($scanPaths === []) {
             $this->warn('  no scan path exists; nothing to analyse.');
@@ -367,21 +374,29 @@ final class GenerateBladeSignaturesCommand extends Command
     /**
      * The throwaway config that adds the collectors to the project's own config.
      *
-     * `paths!` replaces the project's analysis paths (the `!` overrides the
-     * merge) with the scanned code plus the compiled-template directory. The
-     * scanned code yields the render call sites that type each view; the
-     * compiled templates yield the `@include` call sites and the variables each
-     * partial reads, so partials reached only through `@include` can be signed
-     * too. A dedicated `tmpDir` keeps this run's result cache separate from the
+     * The compiled-template directory always needs to be an analysed path: the
+     * compiled templates are where `@include` call sites and the variables each
+     * partial reads come from, so partials reached only through `@include` can
+     * be signed too. How it is added depends on whether `--path` was given:
+     *
+     * - Without `--path`, the compiled directory is added under a plain
+     *   `paths:` key, which PHPStan's Neon loader concatenates with (rather
+     *   than replaces) the `paths` already declared in the project's own
+     *   config being included above. The project's own `paths` and
+     *   `excludePaths` (wildcards included) are therefore reused unchanged;
+     *   there is only one list of analysed paths to maintain.
+     * - With `--path`, `paths!` replaces the project's analysis paths (the
+     *   `!` overrides the merge) with the given paths plus the
+     *   compiled-template directory, narrowing the scan to just those.
+     *
+     * A dedicated `tmpDir` keeps this run's result cache separate from the
      * project's normal one, so neither invalidates the other.
      *
-     * @param list<string> $scanPaths
+     * @param list<string>|null $scanPaths
      */
-    private function buildAnalysisConfig(string $configFile, array $scanPaths, string $cacheDir): string
+    private function buildAnalysisConfig(string $configFile, ?array $scanPaths, string $cacheDir): string
     {
-        $paths = $scanPaths;
-        $paths[] = $this->absolute('.bladestan');
-
+        $bladestanDir = $this->absolute('.bladestan');
         $fragment = dirname(__DIR__, 2) . '/config/generate-signatures.neon';
 
         $lines = [
@@ -390,8 +405,19 @@ final class GenerateBladeSignaturesCommand extends Command
             '    - ' . $fragment,
             'parameters:',
             '    tmpDir: ' . $cacheDir,
-            '    paths!:',
         ];
+
+        if ($scanPaths === null) {
+            $lines[] = '    paths:';
+            $lines[] = '        - ' . $bladestanDir;
+
+            return implode("\n", $lines) . "\n";
+        }
+
+        $paths = $scanPaths;
+        $paths[] = $bladestanDir;
+
+        $lines[] = '    paths!:';
         foreach ($paths as $path) {
             $lines[] = '        - ' . $path;
         }

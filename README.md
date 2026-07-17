@@ -98,12 +98,12 @@ This reads with PHPStan the real type passed at each render site (`view()`, `Vie
 
 When the type at a call site is itself unresolvable, the generated signature declares the variable as `mixed`. It stops the variable being reported as undefined, but checks nothing until you replace the `mixed` with a real type. The command flags each such template as it writes it and reports how many carry only `mixed` types, so you can see at a glance which signatures are load-bearing and which still need work.
 
-Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to scan somewhere other than `app`. The command is available only when Bladestan is installed as a dev dependency.
+By default it scans the same `paths` already declared in your PHPStan config, so wildcard `excludePaths` and everything else you already tuned there apply unchanged. Use `--dry-run` to preview, `--force` to overwrite existing signatures, and `--path` to narrow the scan to specific directories or files instead. The command is available only when Bladestan is installed as a dev dependency.
 
-In a package that has no `artisan` binary, run the command through Testbench from the package root, pointing `--path` at your source directory:
+In a package that has no `artisan` binary, run the command through Testbench from the package root:
 
 ```bash
-vendor/bin/testbench bladestan:generate-signatures --path=src
+vendor/bin/testbench bladestan:generate-signatures
 ```
 
 Signing is iterative. The command already runs in passes, so a partial is typed once its includers are. But when a type depends on a signature you write by hand (a layout, a class-backed component, an `@extends` root), run the command again afterwards so that type flows outward to everything downstream. Pass `--force` to refresh signatures that already exist. The rhythm is: generate, hand-sign the roots the generator left as `mixed`, then generate again.
