@@ -10,6 +10,10 @@ class WiredComponent extends Component
 {
     public string $c;
 
+    public int $accountId;
+
+    public string $scopeType;
+
     public function mount(int $b): void
     {
     }

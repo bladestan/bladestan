@@ -48,6 +48,12 @@ class LivewireTagCompiler
             }
 
             $attributes = $this->arrayStringToArrayConverter->convert($match[2]);
+            $attributes = collect($attributes)
+                ->mapWithKeys(fn (string $value, string $key): array => [
+                    Str::camel($key) => $value,
+                ])
+                ->all();
+
             return $this->componentString($match[1], $attributes);
         }, $rawPhpContent) ?? throw new ShouldNotHappenException('preg_replace_callback error');
     }

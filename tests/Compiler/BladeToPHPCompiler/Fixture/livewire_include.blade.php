@@ -1,4 +1,4 @@
-<livewire:wired-component :b="$b" c="{{$c}}"/>
+<livewire:wired-component :b="$b" c="{{$c}}" :account-id="$b" scope-type="account"/>
 -----
 <?php
 
@@ -9,3 +9,5 @@
 $component = new App\Livewire\WiredComponent();
 $component->mount(b: $b);
 $component->c = '' . e($c) . '';
+$component->accountId = $b;
+$component->scopeType = 'account';
