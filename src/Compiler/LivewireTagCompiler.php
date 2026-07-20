@@ -44,7 +44,11 @@ class LivewireTagCompiler
         return preg_replace_callback(self::LIVEWIRE_REGEX, function (array $match): string {
             $block = $match[1];
             if (! preg_match(self::LIVEWIRE_ARGS_REGEX, $block, $match)) {
-                throw new ShouldNotHappenException('Could not extract Livewire arguments from block: ' . $block);
+                // Dynamic component name (e.g. @livewire($tile['view'], [...])): the args
+                // regex only matches literal names, and a dynamic component cannot be
+                // statically resolved anyway. Skip the block instead of aborting the
+                // analysis of the whole file.
+                return '';
             }
 
             $attributes = $this->arrayStringToArrayConverter->convert($match[2]);
