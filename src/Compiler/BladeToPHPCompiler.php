@@ -76,11 +76,6 @@ final class BladeToPHPCompiler
      */
     private readonly array $shared;
 
-    /**
-     * @var array<string, string>
-     */
-    private readonly array $sharedNative;
-
     private readonly ViewFactory $viewFactory;
 
     public function __construct(
@@ -100,16 +95,11 @@ final class BladeToPHPCompiler
         $shared = [
             'errors' => new ObjectType($errorClass),
         ];
-        $sharedNative = [
-            'errors' => "resolve({$errorClass}::class)",
-        ];
         foreach ($this->viewFactory->getShared() as $name => $value) {
             $shared[(string) $name] = $this->valueResolver->resolve($value);
-            $sharedNative[(string) $name] = $this->valueResolver->toNative($value);
         }
 
         $this->shared = $shared;
-        $this->sharedNative = $sharedNative;
     }
 
     /**
@@ -129,7 +119,6 @@ final class BladeToPHPCompiler
         return hash('xxh128', serialize([
             self::COMPILED_OUTPUT_VERSION,
             defined('LARAVEL_VERSION') ? LARAVEL_VERSION : '',
-            $this->sharedNative,
             $sharedTypes,
         ]));
     }

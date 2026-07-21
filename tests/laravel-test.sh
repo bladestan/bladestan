@@ -2,11 +2,8 @@
 
 set -e
 
-# Temporary fork pinned while the upstream Mailbook project is being refactored
-# to match Bladestan's template-centric analysis. Revert to Xammie/mailbook once
-# the changes land upstream.
-MAILBOOK_REPO="https://github.com/AJenbo/mailbook.git"
-MAILBOOK_COMMIT="1ca8ddf12a8f8ef387c6550dead46775764d1d51"
+MAILBOOK_REPO="https://github.com/Xammie/mailbook.git"
+MAILBOOK_COMMIT="213f8310c91982e95c020c732e43d8e6ff2c6ac0"
 
 echo "Cloning Mailbook project from Git"
 git init --quiet ../mailbook
