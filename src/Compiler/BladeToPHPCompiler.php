@@ -167,6 +167,14 @@ final class BladeToPHPCompiler
         // template lines keep their original numbers, which is what the
         // line-comment pass below reports errors against.
         $templateSignature = $this->signatureExtractor->extract($fileContents);
+        if ($this->signatureExtractor->countExplicitSignatures($fileContents) > 1) {
+            $this->errors[] = [
+                'Multiple @bladestan-signature docblocks found; a template may declare only one. '
+                . 'The first is used and the rest are ignored. Remove the extra blocks.',
+                'bladestan.signature',
+            ];
+        }
+
         $fileContents = $this->signatureExtractor->stripSignatureBlock($fileContents, preserveLineCount: true);
         $fileContents = $this->signatureExtractor->stripImplicitSignatureBlock($fileContents, preserveLineCount: true);
 

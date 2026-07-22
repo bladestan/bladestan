@@ -247,6 +247,20 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString('"identifier":"bladestan.parsing"', $phpFileContentsWithLineMap->phpFileContents);
     }
 
+    public function testMultipleSignaturesAreReportedAsAnError(): void
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/duplicate-signature.blade.php';
+        $this->assertFileExists($filePath);
+
+        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(realpath($filePath) ?: $filePath, 'duplicate-signature');
+
+        // A template may declare only one signature; the extra block is dead,
+        // so it is reported instead of being silently dropped.
+        $this->assertSame('bladestan.signature', $phpFileContentsWithLineMap->errors[0][1]);
+        $this->assertStringContainsString('Multiple @bladestan-signature docblocks', $phpFileContentsWithLineMap->errors[0][0]);
+        $this->assertStringContainsString('"identifier":"bladestan.signature"', $phpFileContentsWithLineMap->phpFileContents);
+    }
+
     /**
      * @return list<string>
      */

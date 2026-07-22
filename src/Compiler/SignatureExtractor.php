@@ -190,6 +190,21 @@ final class SignatureExtractor
     }
 
     /**
+     * Count the explicit @bladestan-signature docblocks in the content.
+     *
+     * A template declares exactly one signature; more than one (typically the
+     * residue of a bad merge conflict resolution) means every block after the
+     * first is dead, since {@see extract()} keeps only the first. The compiler
+     * uses this to report the duplicates instead of silently dropping them.
+     */
+    public function countExplicitSignatures(string $bladeContent): int
+    {
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+
+        return (int) preg_match_all(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $bladeContent);
+    }
+
+    /**
      * Strip an implicit first-docblock signature from blade content. Only
      * strips when the docblock actually carries @var tags (i.e. it was used
      * as the template's signature); an unrelated leading docblock is kept.
