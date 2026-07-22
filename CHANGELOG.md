@@ -9,8 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Analysis is now template-centric: each Blade template compiles once and is
 analysed on its own, against the variables it declares, instead of being
-recompiled and re-analysed at every `view()` call. See
-[`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
+recompiled and re-analysed at every `view()` call. A template rendered from
+many places is now checked once instead of once per call site, which is
+considerably faster, and two call sites passing different types can no longer
+produce contradictory errors on the same line. A template nothing renders is
+analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
 
 ### Added
 
@@ -20,9 +23,16 @@ recompiled and re-analysed at every `view()` call. See
 - `bladestan:generate-signatures` artisan command to generate signatures from
   existing usage.
 - Errors are now reported directly against the `.blade.php` file and line
-  where they occur, instead of at the `view()` call site.
+  where they occur, instead of at the `view()` call site, so
+  `--error-format=blade` lists each template as its own entry instead of
+  bucketing several templates' errors under one caller.
 - A template that fails to compile is reported as an error against the
   template, instead of dropping out of analysis without a trace.
+- Bladestan warns when `.bladestan` is missing from PHPStan's analysed
+  `paths`, or when a raw view directory is left in `paths` instead; the first
+  warning can be silenced with `parameters.bladestan.reportUnanalysedTemplates: false`.
+- Bladestan reminds you to pass `--error-format=blade` when it sees compiled
+  templates analysed without a chosen error format.
 - AI agent guidance for writing signatures, discoverable via Laravel Boost.
 
 ### Changed
