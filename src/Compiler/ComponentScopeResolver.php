@@ -160,9 +160,11 @@ final class ComponentScopeResolver
      */
     private function extractProps(string $bladeContent): ?array
     {
-        // A @props inside a comment or @verbatim block is inert to Blade, so
-        // mask those regions before scanning for the real declaration.
-        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+        // A @props inside a comment, @verbatim, or @php block is inert to
+        // Blade, so mask those regions before scanning for the real
+        // declaration. @php blocks are masked too so a @props written inside a
+        // PHP string literal cannot be read as the component's contract.
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent, maskPhpBlocks: true);
 
         $arrayLiteral = $this->propsDirectiveExtractor->extractArrayLiteral($bladeContent);
         if ($arrayLiteral === null) {

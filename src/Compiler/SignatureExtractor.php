@@ -138,9 +138,12 @@ final class SignatureExtractor
      */
     public function findExtends(string $bladeContent): ?string
     {
-        // A commented-out or @verbatim @extends is inert to Blade, so mask
-        // those regions before looking for the directive that drives merging.
-        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+        // A commented-out, @verbatim, or @php-wrapped @extends is inert to
+        // Blade, so mask those regions before looking for the directive that
+        // drives merging. @php blocks are masked here (but not for the
+        // signature scan) so an @extends written inside a PHP string literal
+        // cannot drive a bogus parent merge.
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent, maskPhpBlocks: true);
 
         if (preg_match(self::EXTENDS_REGEX, $bladeContent, $matches) !== 1) {
             return null;
@@ -230,7 +233,7 @@ final class SignatureExtractor
      */
     public function stripExtends(string $bladeContent, bool $preserveLineCount = false): string
     {
-        return $this->stripMatch(self::EXTENDS_REGEX, $bladeContent, $preserveLineCount, -1);
+        return $this->stripMatch(self::EXTENDS_REGEX, $bladeContent, $preserveLineCount, -1, maskPhp: true);
     }
 
     /**
@@ -246,14 +249,19 @@ final class SignatureExtractor
      * of the string forward, keeping earlier offsets valid as bytes are removed.
      *
      * @param int $limit Maximum number of matches to strip, or -1 for all.
+     * @param bool $maskPhp Also mask raw `@php ... @endphp` blocks before
+     *   matching, so a directive inside one is not stripped. Set for the
+     *   `@extends` scan; left false for the signature scan, which strips a
+     *   docblock that lives inside a `@php` block.
      */
     private function stripMatch(
         string $pattern,
         string $bladeContent,
         bool $preserveLineCount,
         int $limit = 1,
+        bool $maskPhp = false,
     ): string {
-        $masked = $this->bladeInertRegionMasker->mask($bladeContent);
+        $masked = $this->bladeInertRegionMasker->mask($bladeContent, maskPhpBlocks: $maskPhp);
 
         if (preg_match_all($pattern, $masked, $matches, PREG_OFFSET_CAPTURE | PREG_SET_ORDER) < 1) {
             return $bladeContent;
@@ -284,21 +292,26 @@ final class SignatureExtractor
     {
         // Scan the masked content: an inert signature/@extends/@props must not
         // feed the cache hash, or a purely-commented edit would invalidate it.
-        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+        // The signature docblock lives inside a `@php` block, so it is read from
+        // the content masked for comments/verbatim only; @extends and @props are
+        // read from the content that also masks `@php` blocks, since a directive
+        // written inside one is inert to Blade and must not feed the hash either.
+        $signatureMasked = $this->bladeInertRegionMasker->mask($bladeContent);
+        $directiveMasked = $this->bladeInertRegionMasker->mask($bladeContent, maskPhpBlocks: true);
 
         $slices = [];
 
-        if (preg_match(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $bladeContent, $matches) === 1) {
+        if (preg_match(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $signatureMasked, $matches) === 1) {
             $slices[] = $matches[0];
-        } elseif (preg_match(self::FIRST_PHP_DOCBLOCK_REGEX, $bladeContent, $matches) === 1) {
+        } elseif (preg_match(self::FIRST_PHP_DOCBLOCK_REGEX, $signatureMasked, $matches) === 1) {
             $slices[] = $matches[1];
         }
 
-        if (preg_match_all(self::EXTENDS_REGEX, $bladeContent, $matches) > 0) {
+        if (preg_match_all(self::EXTENDS_REGEX, $directiveMasked, $matches) > 0) {
             $slices = [...$slices, ...$matches[0]];
         }
 
-        $slices = [...$slices, ...$this->propsDirectiveExtractor->all($bladeContent)];
+        $slices = [...$slices, ...$this->propsDirectiveExtractor->all($directiveMasked)];
 
         return implode("\n", $slices);
     }

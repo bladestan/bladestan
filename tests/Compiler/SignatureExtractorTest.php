@@ -372,6 +372,67 @@ final class SignatureExtractorTest extends TestCase
         $this->assertStringNotContainsString('@props', $relevant);
     }
 
+    public function testFindExtendsIgnoresDirectiveInsidePhpBlock(): void
+    {
+        // Blade never runs directive processing on @php block content, so an
+        // @extends written in a PHP string literal there is not a real parent.
+        $bladeContent = "@php\n\$label = \"@extends('bogus')\";\n@endphp\n<h1>Hello</h1>";
+
+        $this->assertNull($this->signatureExtractor->findExtends($bladeContent));
+    }
+
+    public function testFindExtendsSkipsPhpBlockDirectiveAndFindsTheRealOne(): void
+    {
+        $bladeContent = "@php\n\$label = \"@extends('bogus')\";\n@endphp\n@extends('layouts.app')";
+
+        $this->assertSame('layouts.app', $this->signatureExtractor->findExtends($bladeContent));
+    }
+
+    public function testStripExtendsLeavesDirectiveInsidePhpBlockIntact(): void
+    {
+        // The @extends here is part of the block's PHP code, not a directive;
+        // splicing it out would corrupt the string literal.
+        $bladeContent = "@php\n\$label = \"@extends('bogus')\";\n@endphp\n<h1>Hello</h1>";
+
+        $this->assertSame($bladeContent, $this->signatureExtractor->stripExtends($bladeContent));
+    }
+
+    public function testSignatureIsStillReadWithABogusExtendsInAnotherPhpBlock(): void
+    {
+        // A real signature block coexists with an unrelated @php block whose
+        // code merely mentions @extends; the signature must still be extracted.
+        $bladeContent = <<<'BLADE'
+            @php
+                /**
+                 * @bladestan-signature
+                 * @var string $name
+                 */
+            @endphp
+            @php
+                $label = "@extends('bogus')";
+            @endphp
+            <h1>{{ $name }}</h1>
+            BLADE;
+
+        $templateSignature = $this->signatureExtractor->extract($bladeContent);
+
+        $this->assertSame([
+            'name' => 'string',
+        ], $templateSignature->variables);
+        $this->assertNull($this->signatureExtractor->findExtends($bladeContent));
+    }
+
+    public function testExtractSignatureRelevantContentIgnoresDirectivesInsidePhpBlocks(): void
+    {
+        $bladeContent = "@php\n\$label = \"@extends('bogus') @props(['x'])\";\n@endphp\n@extends('layouts.app')";
+
+        $relevant = $this->signatureExtractor->extractSignatureRelevantContent($bladeContent);
+
+        $this->assertStringContainsString("@extends('layouts.app')", $relevant);
+        $this->assertStringNotContainsString('bogus', $relevant);
+        $this->assertStringNotContainsString('@props', $relevant);
+    }
+
     public function testExtractSignatureRelevantContentKeepsWholePropsWithACallDefault(): void
     {
         // The default value foo(1) contains a ")"; the whole @props must reach
