@@ -6,20 +6,14 @@ namespace Bladestan\Rules;
 
 use Bladestan\Compiler\SignatureMerger;
 use Bladestan\Compiler\TypeStringValidator;
-use Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
-use Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
-use Bladestan\NodeAnalyzer\MailablesContentMatcher;
+use Bladestan\NodeAnalyzer\BladeScopeVariables;
+use Bladestan\NodeAnalyzer\RenderSiteMatcher;
 use Bladestan\NodeAnalyzer\TemplateFilePathResolver;
 use Bladestan\ValueObject\RenderTemplateWithParameters;
 use InvalidArgumentException;
 use PhpParser\Node;
 use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\New_;
-use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
-use PHPStan\PhpDoc\TypeStringResolver;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
@@ -40,22 +34,10 @@ use ValueError;
  */
 final class ViewCallSiteRule implements Rule
 {
-    /**
-     * Memoized parsed type strings — the same signature is validated at every
-     * call site of a template. A null entry marks a type PHPStan's PHPDoc
-     * parser rejects, so the failed parse is attempted only once.
-     *
-     * @var array<string, Type|null>
-     */
-    private array $resolvedTypeCache = [];
-
     public function __construct(
-        private readonly BladeViewMethodsMatcher $bladeViewMethodsMatcher,
-        private readonly LaravelViewFunctionMatcher $laravelViewFunctionMatcher,
-        private readonly MailablesContentMatcher $mailablesContentMatcher,
+        private readonly RenderSiteMatcher $renderSiteMatcher,
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly SignatureMerger $signatureMerger,
-        private readonly TypeStringResolver $typeStringResolver,
         private readonly TypeStringValidator $typeStringValidator,
     ) {
     }
@@ -71,17 +53,9 @@ final class ViewCallSiteRule implements Rule
      */
     public function processNode(Node $node, Scope $scope): array
     {
-        $renderTemplatesWithParameters = match (true) {
-            $node instanceof StaticCall,
-            $node instanceof FuncCall => $this->laravelViewFunctionMatcher->match($node, $scope),
-            $node instanceof MethodCall => $this->bladeViewMethodsMatcher->match($node, $scope),
-            $node instanceof New_ => $this->mailablesContentMatcher->match($node, $scope),
-            default => [],
-        };
-
         $errors = [];
-        foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
-            $errors = array_merge($errors, $this->validateCallSite($renderTemplateWithParameter, $scope));
+        foreach ($this->renderSiteMatcher->match($node, $scope) as $renderTemplateWithParameter) {
+            $errors = [...$errors, ...$this->validateCallSite($renderTemplateWithParameter, $scope)];
         }
 
         return $errors;
@@ -112,13 +86,13 @@ final class ViewCallSiteRule implements Rule
         // still inherits its layout's contract: Blade forwards the child's
         // whole scope to the layout, so a call site missing a layout-required
         // variable is just as broken as one missing the child's own.
-        $mergeErrors = [];
-        $templateSignature = $this->signatureMerger->mergeForTemplate($bladeFilePath, $mergeErrors);
+        $mergedSignature = $this->signatureMerger->mergeForTemplate($bladeFilePath);
+        $templateSignature = $mergedSignature->signature;
 
         $errors = [];
 
         // Report merge errors (covariance violations)
-        foreach ($mergeErrors as $mergeError) {
+        foreach ($mergedSignature->errors as $mergeError) {
             $errors[] = RuleErrorBuilder::message($mergeError)
                 ->identifier('bladestan.signatureMerge')
                 ->build();
@@ -134,7 +108,7 @@ final class ViewCallSiteRule implements Rule
         // of the signature (and every other call site) is still validated.
         $invalidTypes = [];
         foreach ($templateSignature->variables as $varName => $expectedTypeString) {
-            if ($this->resolveTypeString($expectedTypeString) instanceof Type) {
+            if ($this->typeStringValidator->resolve($expectedTypeString) instanceof Type) {
                 continue;
             }
 
@@ -168,7 +142,7 @@ final class ViewCallSiteRule implements Rule
             }
 
             // Parse the expected type string into a PHPStan Type
-            $expectedType = $this->resolveTypeString($expectedTypeString);
+            $expectedType = $this->typeStringValidator->resolve($expectedTypeString);
             assert($expectedType instanceof Type);
 
             // Check if the provided type is accepted by the expected type
@@ -205,9 +179,11 @@ final class ViewCallSiteRule implements Rule
                 continue;
             }
 
-            // Don't report shared/framework variables as missing
-            // These are automatically available in all templates at runtime
-            if ($this->isSharedVariable($varName)) {
+            // Don't report the variables Blade supplies itself (the error bag,
+            // the environment, component and loop internals) as missing: they
+            // are available in every template at runtime, not part of its
+            // contract.
+            if (BladeScopeVariables::isInternal($varName)) {
                 continue;
             }
 
@@ -218,7 +194,7 @@ final class ViewCallSiteRule implements Rule
             // variables as maybe-defined mixed, which must stay "missing".
             if ($renderTemplateWithParameters->forwardsScope && $scope->hasVariableType($varName)->yes()) {
                 $scopeType = $scope->getVariableType($varName);
-                $expectedType = $this->resolveTypeString($expectedTypeString);
+                $expectedType = $this->typeStringValidator->resolve($expectedTypeString);
                 assert($expectedType instanceof Type);
 
                 if (! $expectedType->isSuperTypeOf($scopeType)->yes()) {
@@ -251,42 +227,5 @@ final class ViewCallSiteRule implements Rule
         }
 
         return $errors;
-    }
-
-    /**
-     * Parse a PHPDoc type string into a PHPStan Type object, or null when the
-     * string is not a valid PHPDoc type.
-     *
-     * Uses TypeStringResolver which does not require a file context, unlike
-     * FileTypeMapper which cannot resolve types for .blade.php files. The
-     * resolver throws on malformed types (e.g. a parenthesized union copied
-     * from dumpType output); a signature author's mistake must never abort the
-     * whole analysis, so the failure is contained here and surfaced as a
-     * localized bladestan.invalidSignatureType error at the call site.
-     */
-    private function resolveTypeString(string $typeString): ?Type
-    {
-        if (array_key_exists($typeString, $this->resolvedTypeCache)) {
-            return $this->resolvedTypeCache[$typeString];
-        }
-
-        if (! $this->typeStringValidator->isValid($typeString)) {
-            return $this->resolvedTypeCache[$typeString] = null;
-        }
-
-        return $this->resolvedTypeCache[$typeString] = $this->typeStringResolver->resolve($typeString);
-    }
-
-    /**
-     * Check if a variable name is a known shared/framework variable
-     * that is automatically available in all templates.
-     */
-    private function isSharedVariable(string $varName): bool
-    {
-        // The 'errors' variable is always shared by Laravel (ViewErrorBag)
-        /** @var list<string> $knownShared */
-        $knownShared = ['errors', 'app', '__env', 'slot', 'attributes', 'component'];
-
-        return in_array($varName, $knownShared, true);
     }
 }

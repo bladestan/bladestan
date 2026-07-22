@@ -76,13 +76,11 @@ final class LaravelViewFunctionMatcher
 
         $parametersArray = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
 
-        $dataResolved = true;
+        $hasUnresolvedData = false;
         if (count($args) >= 2) {
-            $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray(
-                $args[1],
-                $scope,
-                $dataResolved,
-            );
+            $resolvedParameters = $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
+            $parametersArray += $resolvedParameters->parameters;
+            $hasUnresolvedData = ! $resolvedParameters->resolved;
         }
 
         // Only a component's template receives the enclosing class's public
@@ -109,7 +107,7 @@ final class LaravelViewFunctionMatcher
                 $template->value,
                 $parametersArray,
                 $forwardsScope,
-                ! $dataResolved,
+                $hasUnresolvedData,
             ),
         ];
     }

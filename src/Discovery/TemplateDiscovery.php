@@ -48,7 +48,7 @@ final class TemplateDiscovery
 
         // Default (non-namespaced) view paths
         foreach ($finder->getPaths() as $path) {
-            $this->discoverInPath($path, null, $map);
+            $map = [...$map, ...$this->discoverInPath($path, null)];
         }
 
         // Namespaced (hinted) view paths
@@ -56,7 +56,7 @@ final class TemplateDiscovery
         $hints = $finder->getHints();
         foreach ($hints as $namespace => $paths) {
             foreach ($paths as $path) {
-                $this->discoverInPath($path, $namespace, $map);
+                $map = [...$map, ...$this->discoverInPath($path, $namespace)];
             }
         }
 
@@ -77,19 +77,21 @@ final class TemplateDiscovery
     }
 
     /**
-     * @param array<string, string> $map
+     * @return array<string, string> absoluteFilePath => viewName
      * @throws UnexpectedValueException
      */
-    private function discoverInPath(string $path, ?string $namespace, array &$map): void
+    private function discoverInPath(string $path, ?string $namespace): array
     {
         if (! is_dir($path)) {
-            return;
+            return [];
         }
 
         $realPath = realpath($path);
         if ($realPath === false) {
-            return;
+            return [];
         }
+
+        $map = [];
 
         $directory = new RecursiveDirectoryIterator($realPath);
         $iterator = new RecursiveIteratorIterator($directory);
@@ -111,5 +113,7 @@ final class TemplateDiscovery
 
             $map[$absolutePath] = $viewName;
         }
+
+        return $map;
     }
 }

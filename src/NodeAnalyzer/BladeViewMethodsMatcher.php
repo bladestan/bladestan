@@ -121,24 +121,22 @@ final class BladeViewMethodsMatcher
             ];
         }
 
-        $dataResolved = true;
+        $hasUnresolvedData = false;
         if ($methodName === self::EACH) {
             $parametersArray += $this->getEachVariables($methodCall, $scope);
         } else {
             $arg = $this->findTemplateDataArgument($methodName, $methodCall);
             if ($arg instanceof Arg) {
-                $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray(
-                    $arg,
-                    $scope,
-                    $dataResolved,
-                );
+                $resolvedParameters = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
+                $parametersArray += $resolvedParameters->parameters;
+                $hasUnresolvedData = ! $resolvedParameters->resolved;
             }
         }
 
         $nativeReflection = $calledOnType->getObjectClassReflections()[0];
         $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
 
-        return [new RenderTemplateWithParameters($template, $parametersArray, false, ! $dataResolved)];
+        return [new RenderTemplateWithParameters($template, $parametersArray, false, $hasUnresolvedData)];
     }
 
     private function resolveName(MethodCall $methodCall): ?string

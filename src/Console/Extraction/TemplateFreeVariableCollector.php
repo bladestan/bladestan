@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\Console\Extraction;
 
+use Bladestan\NodeAnalyzer\BladeScopeVariables;
 use PhpParser\Node;
 use PhpParser\Node\Expr\Variable;
 use PHPStan\Analyser\Scope;

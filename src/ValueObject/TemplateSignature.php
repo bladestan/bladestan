@@ -62,6 +62,6 @@ final class TemplateSignature
      */
     public function mergedWith(self $other): self
     {
-        return new self(array_merge($this->variables, $other->variables), $this->isExplicit || $other->isExplicit);
+        return new self([...$this->variables, ...$other->variables], $this->isExplicit || $other->isExplicit);
     }
 }

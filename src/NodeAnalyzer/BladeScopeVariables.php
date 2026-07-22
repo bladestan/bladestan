@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Bladestan\Console\Extraction;
+namespace Bladestan\NodeAnalyzer;
 
 use function in_array;
 use function str_starts_with;
@@ -13,9 +13,10 @@ use function str_starts_with;
  * A compiled template forwards its whole scope to `@include`d partials, but the
  * variables Blade adds itself (the environment, the error bag, component and
  * loop internals) are not part of any template's contract. They must be
- * excluded both when harvesting the types a partial receives and when detecting
- * the variables a partial actually needs, so a generated signature lists only
- * the real inputs.
+ * excluded both when validating a call site (so a framework internal is never
+ * reported as a missing parameter) and when the signature generator harvests
+ * the types a partial receives, so a generated signature lists only the real
+ * inputs.
  */
 final class BladeScopeVariables
 {

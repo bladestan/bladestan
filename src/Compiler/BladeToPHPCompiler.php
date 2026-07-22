@@ -15,9 +15,9 @@ use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludesToViewCalls;
 use Bladestan\PhpParser\SimplePhpParser;
+use Bladestan\ValueObject\DataCollectingView;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
 use Bladestan\ValueObject\TemplateSignature;
-use Bladestan\ValueObject\ViewDataCollector;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Support\ViewErrorBag;
 use Illuminate\View\Compilers\BladeCompiler;
@@ -271,16 +271,16 @@ final class BladeToPHPCompiler
      */
     private function getViewDataRaw(string $viewName): array
     {
-        $viewDataCollector = new ViewDataCollector($viewName, $this->viewFactory);
+        $dataCollectingView = new DataCollectingView($viewName, $this->viewFactory);
         try {
             /** @throws Throwable */
-            $this->viewFactory->callComposer($viewDataCollector);
+            $this->viewFactory->callComposer($dataCollectingView);
         } catch (Throwable $throwable) {
             $this->errors[] = [$throwable->getMessage(), 'bladestan.data'];
             return [];
         }
 
-        return $viewDataCollector->getData();
+        return $dataCollectingView->getData();
     }
 
     /**
@@ -458,7 +458,7 @@ final class BladeToPHPCompiler
             $declared[$name] = true;
         }
 
-        $stmts = array_merge($varNops, $this->simplePhpParser->parse($phpCode));
+        $stmts = [...$varNops, ...$this->simplePhpParser->parse($phpCode)];
 
         return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
     }

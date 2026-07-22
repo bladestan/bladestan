@@ -5,15 +5,10 @@ declare(strict_types=1);
 namespace Bladestan\Console\Extraction;
 
 use Bladestan\Compiler\TypeStringValidator;
-use Bladestan\NodeAnalyzer\BladeViewMethodsMatcher;
-use Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher;
-use Bladestan\NodeAnalyzer\MailablesContentMatcher;
+use Bladestan\NodeAnalyzer\BladeScopeVariables;
+use Bladestan\NodeAnalyzer\RenderSiteMatcher;
 use PhpParser\Node;
 use PhpParser\Node\Expr\CallLike;
-use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\MethodCall;
-use PhpParser\Node\Expr\New_;
-use PhpParser\Node\Expr\StaticCall;
 use PHPStan\Analyser\Scope;
 use PHPStan\Collectors\Collector;
 use PHPStan\Type\GeneralizePrecision;
@@ -28,7 +23,8 @@ use ValueError;
  *
  * This is the data-gathering half of `bladestan:generate-signatures`. It runs
  * inside a normal PHPStan analysis (registered through
- * config/generate-signatures.neon) and reuses the same call-site matchers as
+ * config/generate-signatures.neon) and matches render sites through the same
+ * {@see \Bladestan\NodeAnalyzer\RenderSiteMatcher} as
  * {@see \Bladestan\Rules\ViewCallSiteRule}, so every render form the validator
  * understands (`view()`, `View::make()`, `->view()`/`->markdown()`, Mailable
  * content) is covered by the generator too. Each collected entry is one render
@@ -47,9 +43,7 @@ use ValueError;
 final class ViewDataCollector implements Collector
 {
     public function __construct(
-        private readonly BladeViewMethodsMatcher $bladeViewMethodsMatcher,
-        private readonly LaravelViewFunctionMatcher $laravelViewFunctionMatcher,
-        private readonly MailablesContentMatcher $mailablesContentMatcher,
+        private readonly RenderSiteMatcher $renderSiteMatcher,
         private readonly TypeStringValidator $typeStringValidator,
     ) {
     }
@@ -66,16 +60,8 @@ final class ViewDataCollector implements Collector
      */
     public function processNode(Node $node, Scope $scope): ?array
     {
-        $renderTemplatesWithParameters = match (true) {
-            $node instanceof StaticCall,
-            $node instanceof FuncCall => $this->laravelViewFunctionMatcher->match($node, $scope),
-            $node instanceof MethodCall => $this->bladeViewMethodsMatcher->match($node, $scope),
-            $node instanceof New_ => $this->mailablesContentMatcher->match($node, $scope),
-            default => [],
-        };
-
         $sites = [];
-        foreach ($renderTemplatesWithParameters as $renderTemplateWithParameter) {
+        foreach ($this->renderSiteMatcher->match($node, $scope) as $renderTemplateWithParameter) {
             $variables = [];
             foreach ($renderTemplateWithParameter->parametersArray as $variableName => $type) {
                 // ClassPropertiesResolver folds a class-backed call site's own public

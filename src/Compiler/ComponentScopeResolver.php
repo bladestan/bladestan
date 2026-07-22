@@ -110,11 +110,9 @@ final class ComponentScopeResolver
             return $scope;
         }
 
-        foreach ($props as $name => $defaultExpression) {
-            $scope[$name] = $this->typeFromDefaultExpression($defaultExpression);
-        }
-
-        return $scope;
+        // Props are the highest-priority body variables: an explicit @props
+        // entry wins over a reflected class member of the same name.
+        return [...$scope, ...$this->typesForProps($props)];
     }
 
     /**
@@ -133,12 +131,24 @@ final class ComponentScopeResolver
             return null;
         }
 
-        $signature = [];
+        return $this->typesForProps($props);
+    }
+
+    /**
+     * Map each `@props` entry to the type of its default value (or `mixed` when
+     * it has no default).
+     *
+     * @param array<string, string|null> $props prop name => default expression
+     * @return array<string, string> prop name => PHPDoc type string
+     */
+    private function typesForProps(array $props): array
+    {
+        $types = [];
         foreach ($props as $name => $defaultExpression) {
-            $signature[$name] = $this->typeFromDefaultExpression($defaultExpression);
+            $types[$name] = $this->typeFromDefaultExpression($defaultExpression);
         }
 
-        return $signature;
+        return $types;
     }
 
     /**

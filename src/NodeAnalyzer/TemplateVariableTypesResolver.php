@@ -4,21 +4,20 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
+use Bladestan\ValueObject\ResolvedParameters;
 use PhpParser\Node\Expr;
 use PhpParser\Node\Expr\Array_;
 use PHPStan\Analyser\Scope;
-use PHPStan\Type\Type;
 
 final class TemplateVariableTypesResolver
 {
     /**
-     * @param bool $resolved Set to false when an item can't be attributed to
-     * a known variable name (an unpacked spread, or a non-constant key), so
-     * the array's full shape isn't known.
-     *
-     * @return array<string, Type>
+     * Resolve an array literal to a variable-name-to-type map. The result is
+     * unresolved when an item can't be attributed to a known variable name (an
+     * unpacked spread, or a non-constant key), so the array's full shape isn't
+     * known.
      */
-    public function resolveArray(Array_ $array, Scope $scope, bool &$resolved = true): array
+    public function resolveArray(Array_ $array, Scope $scope): ResolvedParameters
     {
         $variableNamesToTypes = [];
         $resolved = true;
@@ -42,6 +41,6 @@ final class TemplateVariableTypesResolver
             $variableNamesToTypes[reset($keyName)->getValue()] = $scope->getType($arrayItem->value);
         }
 
-        return $variableNamesToTypes;
+        return new ResolvedParameters($variableNamesToTypes, $resolved);
     }
 }

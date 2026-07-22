@@ -280,10 +280,10 @@ final class SignatureExtractor
         }
 
         if (preg_match_all(self::EXTENDS_REGEX, $bladeContent, $matches) > 0) {
-            $slices = array_merge($slices, $matches[0]);
+            $slices = [...$slices, ...$matches[0]];
         }
 
-        $slices = array_merge($slices, $this->propsDirectiveExtractor->all($bladeContent));
+        $slices = [...$slices, ...$this->propsDirectiveExtractor->all($bladeContent)];
 
         return implode("\n", $slices);
     }

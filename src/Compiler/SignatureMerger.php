@@ -5,9 +5,9 @@ declare(strict_types=1);
 namespace Bladestan\Compiler;
 
 use Bladestan\NodeAnalyzer\TemplateFilePathResolver;
+use Bladestan\ValueObject\MergedSignature;
 use Bladestan\ValueObject\TemplateSignature;
 use InvalidArgumentException;
-use PHPStan\PhpDoc\TypeStringResolver;
 use PHPStan\Type\Type;
 
 /**
@@ -31,18 +31,17 @@ final class SignatureMerger
     private const MAX_EXTENDS_DEPTH = 20;
 
     /**
-     * Memoized merged signatures + their merge errors. A rule instance lives
+     * Memoized merged signatures with their merge errors. A rule instance lives
      * for the whole analysis run and templates don't change mid-run, so every
      * call site of the same template can reuse one merge (and its file reads).
      *
-     * @var array<string, array{TemplateSignature, list<string>}>
+     * @var array<string, MergedSignature>
      */
     private array $mergedSignatureCache = [];
 
     public function __construct(
         private readonly SignatureExtractor $signatureExtractor,
         private readonly TemplateFilePathResolver $templateFilePathResolver,
-        private readonly TypeStringResolver $typeStringResolver,
         private readonly TypeStringValidator $typeStringValidator,
     ) {
     }
@@ -51,45 +50,28 @@ final class SignatureMerger
      * Resolve the merged signature for a template, walking its @extends chain.
      *
      * The result is the union of all variables from the child and all ancestors,
-     * with covariance rules applied on conflicts.
-     *
-     * @param list<string> $errors Collects error messages for covariance violations
-     * @return TemplateSignature The merged signature for call-site validation
+     * with covariance rules applied on conflicts, alongside any errors raised
+     * while merging.
      */
-    public function mergeForTemplate(string $bladeFilePath, array &$errors = []): TemplateSignature
+    public function mergeForTemplate(string $bladeFilePath): MergedSignature
     {
-        if (isset($this->mergedSignatureCache[$bladeFilePath])) {
-            [$cachedSignature, $cachedErrors] = $this->mergedSignatureCache[$bladeFilePath];
-            $errors = array_merge($errors, $cachedErrors);
-
-            return $cachedSignature;
-        }
-
-        $mergeErrors = [];
-        $templateSignature = $this->doMergeForTemplate($bladeFilePath, $mergeErrors);
-        $this->mergedSignatureCache[$bladeFilePath] = [$templateSignature, $mergeErrors];
-        $errors = array_merge($errors, $mergeErrors);
-
-        return $templateSignature;
+        return $this->mergedSignatureCache[$bladeFilePath] ??= $this->doMergeForTemplate($bladeFilePath);
     }
 
-    /**
-     * @param list<string> $errors
-     */
-    private function doMergeForTemplate(string $bladeFilePath, array &$errors): TemplateSignature
+    private function doMergeForTemplate(string $bladeFilePath): MergedSignature
     {
-        $chain = $this->resolveExtendsChain($bladeFilePath, $errors);
+        [$chain, $errors] = $this->resolveExtendsChain($bladeFilePath);
 
         if ($chain === []) {
             // The template became unreadable between resolution and merge
             // (deleted, permissions, a race). Degrade to an empty signature
             // rather than dereferencing a missing chain entry.
-            return new TemplateSignature([]);
+            return new MergedSignature(new TemplateSignature([]), $errors);
         }
 
         if (count($chain) === 1) {
             // No @extends chain — return the template's own signature
-            return $chain[0]['signature'];
+            return new MergedSignature($chain[0]['signature'], $errors);
         }
 
         // Merge pairwise from the deepest ancestor up to the child.
@@ -101,27 +83,29 @@ final class SignatureMerger
             $childPath = $chain[$i]['path'];
             $parentPath = $chain[$i + 1]['path'];
 
-            $merged = $this->mergePair($childSig, $merged, $childPath, $parentPath, $errors);
+            [$merged, $pairErrors] = $this->mergePair($childSig, $merged, $childPath, $parentPath);
+            $errors = [...$errors, ...$pairErrors];
         }
 
-        return $merged;
+        return new MergedSignature($merged, $errors);
     }
 
     /**
      * Merge a child signature with a parent signature, applying covariance rules.
      *
-     * @param list<string> $errors
+     * @return array{TemplateSignature, list<string>} the merged signature and
+     *         any covariance-violation errors raised while merging
      */
     private function mergePair(
         TemplateSignature $child,
         TemplateSignature $parent,
         string $childPath,
         string $parentPath,
-        array &$errors,
-    ): TemplateSignature {
+    ): array {
         $merged = [];
+        $errors = [];
 
-        $allVarNames = array_unique(array_merge(array_keys($child->variables), array_keys($parent->variables)));
+        $allVarNames = array_unique([...array_keys($child->variables), ...array_keys($parent->variables)]);
 
         foreach ($allVarNames as $allVarName) {
             $childHasType = array_key_exists($allVarName, $child->variables);
@@ -149,8 +133,8 @@ final class SignatureMerger
                 continue;
             }
 
-            $childParsed = $this->parseTypeString($childType);
-            $parentParsed = $this->parseTypeString($parentType);
+            $childParsed = $this->typeStringValidator->resolve($childType);
+            $parentParsed = $this->typeStringValidator->resolve($parentType);
 
             if (! $childParsed instanceof Type || ! $parentParsed instanceof Type) {
                 // One side is not a valid PHPDoc type. The covariance check is
@@ -202,20 +186,21 @@ final class SignatureMerger
             }
         }
 
-        return new TemplateSignature($merged, $child->isExplicit || $parent->isExplicit);
+        return [new TemplateSignature($merged, $child->isExplicit || $parent->isExplicit), $errors];
     }
 
     /**
      * Walk the @extends chain starting from the given blade file.
      *
-     * @param list<string> $errors Collects an error when a parent template
-     *        cannot be resolved, since its contract then goes unenforced.
-     * @return list<array{path: string, signature: TemplateSignature}>
-     *         Index 0 is the starting template (child), last index is the deepest ancestor.
+     * @return array{list<array{path: string, signature: TemplateSignature}>, list<string>}
+     *         The chain (index 0 is the starting template, last index the
+     *         deepest ancestor) and an error for each parent that could not be
+     *         resolved, since its contract then goes unenforced.
      */
-    private function resolveExtendsChain(string $bladeFilePath, array &$errors): array
+    private function resolveExtendsChain(string $bladeFilePath): array
     {
         $chain = [];
+        $errors = [];
         $currentPath = $bladeFilePath;
         $visited = [];
 
@@ -260,24 +245,6 @@ final class SignatureMerger
             $currentPath = $parentPath;
         }
 
-        return $chain;
-    }
-
-    /**
-     * Parse a PHPDoc type string into a PHPStan Type object, or null when the
-     * string is not a valid PHPDoc type.
-     *
-     * Uses TypeStringResolver which does not require a file context, unlike
-     * FileTypeMapper which cannot resolve types for .blade.php files. The
-     * resolver throws on malformed types; that must never abort the run, so
-     * the failure is contained and reported at the call site instead.
-     */
-    private function parseTypeString(string $typeString): ?Type
-    {
-        if (! $this->typeStringValidator->isValid($typeString)) {
-            return null;
-        }
-
-        return $this->typeStringResolver->resolve($typeString);
+        return [$chain, $errors];
     }
 }

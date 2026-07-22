@@ -7,7 +7,15 @@ namespace Bladestan\ValueObject;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Contracts\View\View;
 
-class ViewDataCollector implements View
+/**
+ * A stand-in {@see View} handed to Laravel's view composers so the data they
+ * inject can be captured instead of rendered.
+ *
+ * The compiler runs a template's composers against this object; each `with()`
+ * call records data rather than binding it to a real view, and
+ * {@see getData()} returns everything the composers contributed.
+ */
+class DataCollectingView implements View
 {
     /**
      * @var array<string, mixed>
@@ -49,7 +57,7 @@ class ViewDataCollector implements View
     public function with($key, $value = null): self
     {
         if (is_array($key)) {
-            $this->data = array_merge($this->data, $key);
+            $this->data = [...$this->data, ...$key];
         } else {
             $this->data[$key] = $value;
         }

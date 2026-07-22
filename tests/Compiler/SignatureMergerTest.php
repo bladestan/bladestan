@@ -109,17 +109,16 @@ final class SignatureMergerTest extends PHPStanTestCase
      */
     private function mergePair(array $childVariables, array $parentVariables): array
     {
-        $errors = [];
         $reflectionMethod = new ReflectionMethod($this->signatureMerger, 'mergePair');
-        $merged = $reflectionMethod->invokeArgs($this->signatureMerger, [
+
+        /** @var array{TemplateSignature, list<string>} $result */
+        $result = $reflectionMethod->invokeArgs($this->signatureMerger, [
             new TemplateSignature($childVariables, true),
             new TemplateSignature($parentVariables, true),
             '/views/child.blade.php',
             '/views/parent.blade.php',
-            &$errors,
         ]);
-        self::assertInstanceOf(TemplateSignature::class, $merged);
 
-        return [$merged, $errors];
+        return $result;
     }
 }

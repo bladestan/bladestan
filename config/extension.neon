@@ -111,6 +111,7 @@ services:
 
     - Bladestan\Blade\PhpLineToTemplateLineResolver
     - Bladestan\NodeAnalyzer\TemplateFilePathResolver
+    - Bladestan\NodeAnalyzer\RenderSiteMatcher
     - Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher
     - Bladestan\NodeAnalyzer\MailablesContentMatcher
     - Bladestan\NodeAnalyzer\BladeViewMethodsMatcher
