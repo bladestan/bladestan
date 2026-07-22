@@ -38,8 +38,9 @@ final class MailablesContentMatcher
         $constructorParameterNames = ['view', 'html', 'text', 'markdown', 'with', 'htmlString'];
 
         $viewNames = [];
-        $hasUnresolvedData = false;
-        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($new, $scope);
+        $resolvedWith = $this->magicViewWithCallParameterResolver->resolve($new, $scope);
+        $parametersArray = $resolvedWith->parameters;
+        $hasUnresolvedData = ! $resolvedWith->resolved;
         foreach ($new->getArgs() as $position => $argument) {
             $argName = $argument->name === null
                 ? ($constructorParameterNames[$position] ?? '')

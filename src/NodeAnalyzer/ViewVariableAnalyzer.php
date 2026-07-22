@@ -9,8 +9,6 @@ use Illuminate\Contracts\Support\Arrayable;
 use PhpParser\Node\Expr;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\ParametersAcceptorSelector;
-use PHPStan\Type\Constant\ConstantIntegerType;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\ObjectType;
 use ValueError;
 
@@ -46,10 +44,25 @@ final class ViewVariableAnalyzer
             return new ResolvedParameters([], false);
         }
 
-        $keyTypes = array_map(function (ConstantIntegerType|ConstantStringType $keyType): string {
-            return (string) $keyType->getValue();
-        }, $constantArrays[0]->getKeyTypes());
+        $constantArray = $constantArrays[0];
+        $optionalKeys = $constantArray->getOptionalKeys();
+        $valueTypes = $constantArray->getValueTypes();
 
-        return new ResolvedParameters(array_combine($keyTypes, $constantArrays[0]->getValueTypes()));
+        // An optional key (`array{user?: User}`) may be absent at runtime, so
+        // it does not satisfy a required signature variable. Dropping it here
+        // lets the missing-parameter check still fire for it, while the result
+        // stays resolved so the guaranteed keys are validated normally.
+        $keyNames = [];
+        $keptValueTypes = [];
+        foreach ($constantArray->getKeyTypes() as $index => $keyType) {
+            if (in_array($index, $optionalKeys, true)) {
+                continue;
+            }
+
+            $keyNames[] = (string) $keyType->getValue();
+            $keptValueTypes[] = $valueTypes[$index];
+        }
+
+        return new ResolvedParameters(array_combine($keyNames, $keptValueTypes));
     }
 }

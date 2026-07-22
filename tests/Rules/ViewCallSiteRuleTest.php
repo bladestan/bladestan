@@ -108,6 +108,27 @@ final class ViewCallSiteRuleTest extends RuleTestCase
         // variable as missing — the opaque value may supply any of them.
         yield [__DIR__ . '/Fixture/view-call-site-unresolvable-data.php', []];
 
+        // An optional array-shape key (user?: User) may be absent at runtime,
+        // so it does not satisfy the required $user; $title is still accepted.
+        yield [__DIR__ . '/Fixture/view-call-site-optional-key.php', [
+            ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 19],
+        ]];
+
+        // Data passed through ->with() that the visitor can't read statically
+        // (compact(), an opaque array, a dynamic key) marks the site unresolved
+        // rather than "nothing passed", so no signature variable is reported missing.
+        yield [__DIR__ . '/Fixture/view-call-site-with-unresolved.php', []];
+
+        // A ->with() chain (both the key/value and the array form) provides the
+        // required variables; a wrong type through ->with() is still reported.
+        yield [__DIR__ . '/Fixture/view-call-site-with-chain.php', [
+            ['Template signed-template expects parameter $title of type string, but int given.', 24],
+        ]];
+
+        // A ->with() chain reached through a variable assigned from view() is
+        // resolved the same as a direct chain.
+        yield [__DIR__ . '/Fixture/view-call-site-with-variable-chain.php', []];
+
         // Scope forwarding (compiled @include): variables in the surrounding
         // scope satisfy the signature, with their types still validated.
         yield [__DIR__ . '/Fixture/view-call-site-scope-forwarding.php', [

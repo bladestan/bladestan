@@ -263,7 +263,11 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
 
         $lineMapping = $this->getLineMapping($filePath);
         if ($lineMapping === []) {
-            return $compiledLine;
+            // A compiled file with no template-line markers (an error stub, or
+            // a template that compiled to only header comments). No compiled
+            // line corresponds to template content, so the raw compiled line
+            // would point at unrelated source; anchor at the top instead.
+            return 1;
         }
 
         // Find the mapping entry for this compiled line (exact or nearest preceding)
@@ -282,7 +286,14 @@ final class BladeTemplateErrorFormatter implements ErrorFormatter
             $nearestBladeLine = (int) current($entry);
         }
 
-        return $nearestBladeLine ?? $compiledLine;
+        // Lines before the first marker are the compiled header: the
+        // `@bladestan-source` comment and the injected `@var` annotations for
+        // the signature, composer, and shared variables. They have no template
+        // counterpart, so the compiled line number would land on unrelated
+        // template content (e.g. a "@var contains unknown class" error from a
+        // signature type would appear against whatever the template happens to
+        // have on that line). Anchor them at the top of the template instead.
+        return $nearestBladeLine ?? 1;
     }
 
     /**

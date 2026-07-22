@@ -74,13 +74,14 @@ final class LaravelViewFunctionMatcher
 
         $args = $callLike->getArgs();
 
-        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
+        $resolvedWith = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
+        $parametersArray = $resolvedWith->parameters;
+        $hasUnresolvedData = ! $resolvedWith->resolved;
 
-        $hasUnresolvedData = false;
         if (count($args) >= 2) {
             $resolvedParameters = $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
             $parametersArray += $resolvedParameters->parameters;
-            $hasUnresolvedData = ! $resolvedParameters->resolved;
+            $hasUnresolvedData = $hasUnresolvedData || ! $resolvedParameters->resolved;
         }
 
         // Only a component's template receives the enclosing class's public

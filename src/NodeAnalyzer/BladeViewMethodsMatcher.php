@@ -113,7 +113,9 @@ final class BladeViewMethodsMatcher
 
         $template = $templateNameArg->value->value;
 
-        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($methodCall, $scope);
+        $resolvedWith = $this->magicViewWithCallParameterResolver->resolve($methodCall, $scope);
+        $parametersArray = $resolvedWith->parameters;
+        $hasUnresolvedData = ! $resolvedWith->resolved;
 
         if ($this->isClassWithMessage($calledOnType)) {
             $parametersArray += [
@@ -121,7 +123,6 @@ final class BladeViewMethodsMatcher
             ];
         }
 
-        $hasUnresolvedData = false;
         if ($methodName === self::EACH) {
             $parametersArray += $this->getEachVariables($methodCall, $scope);
         } else {
@@ -129,7 +130,7 @@ final class BladeViewMethodsMatcher
             if ($arg instanceof Arg) {
                 $resolvedParameters = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
                 $parametersArray += $resolvedParameters->parameters;
-                $hasUnresolvedData = ! $resolvedParameters->resolved;
+                $hasUnresolvedData = $hasUnresolvedData || ! $resolvedParameters->resolved;
             }
         }
 

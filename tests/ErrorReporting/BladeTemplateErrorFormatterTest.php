@@ -71,6 +71,48 @@ final class BladeTemplateErrorFormatterTest extends ErrorFormatterTestCase
         $this->assertStringContainsString('editor://open?file=/project/resources/views/welcome.blade.php&line=5', $content);
     }
 
+    public function testHeaderRegionErrorsAnchorAtTemplateTop(): void
+    {
+        $compiledFile = self::COMPILED_DIR . '/welcome-compiled.php';
+
+        // Compiled line 4 is the injected `/** @var string $title */` header —
+        // it precedes every `file: …, line: …` marker, so it has no template
+        // counterpart. Its raw compiled line would land on unrelated template
+        // content, so it must anchor at the top of the template instead.
+        $analysisResult = $this->analysisResult([
+            new Error('PHPDoc tag @var contains unknown class App\\Renamed', $compiledFile, 4),
+        ]);
+
+        $this->createFormatter()
+            ->formatErrors($analysisResult, $this->getOutput());
+
+        $content = $this->getOutputContent();
+
+        $this->assertStringContainsString('welcome.blade.php', $content);
+        // Reported against the top of the template, not compiled line 4.
+        $this->assertMatchesRegularExpression('/\b1\b\s+PHPDoc tag @var contains unknown class/', $content);
+    }
+
+    public function testStubWithNoLineMarkersAnchorsAtTemplateTop(): void
+    {
+        // A template that failed to compile leaves a comment-only stub with no
+        // `file: …, line: …` markers at all. An error against it (line 3, the
+        // @bladestan-error marker) has no line mapping, so it anchors at the top.
+        $compiledFile = self::COMPILED_DIR . '/stub-compiled.php';
+
+        $analysisResult = $this->analysisResult([
+            new Error('View [broken.blade.php] contains syntax errors.', $compiledFile, 3),
+        ]);
+
+        $this->createFormatter()
+            ->formatErrors($analysisResult, $this->getOutput());
+
+        $content = $this->getOutputContent();
+
+        $this->assertStringContainsString('broken.blade.php', $content);
+        $this->assertMatchesRegularExpression('/\b1\b\s+View \[broken\.blade\.php\] contains syntax errors\./', $content);
+    }
+
     public function testLeavesNonCompiledFilesUntouched(): void
     {
         $analysisResult = $this->analysisResult([new Error('Undefined variable', '/app/Http/Controller.php', 42)]);
