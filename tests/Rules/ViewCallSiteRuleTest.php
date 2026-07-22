@@ -42,6 +42,11 @@ final class ViewCallSiteRuleTest extends RuleTestCase
         // Template without signature — no errors from ViewCallSiteRule
         yield [__DIR__ . '/Fixture/view-call-site-no-signature.php', []];
 
+        // A mixed value passed for a typed variable follows PHPStan's own
+        // acceptance rules: below checkExplicitMixed (level 9) it is accepted,
+        // just as it would be for a normal function argument.
+        yield [__DIR__ . '/Fixture/view-call-site-mixed-param.php', []];
+
         // A controller's public $user property does not reach the view, so the
         // template's required $user is still missing.
         yield [__DIR__ . '/Fixture/view-call-site-controller-property.php', [

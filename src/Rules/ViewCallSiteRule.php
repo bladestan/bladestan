@@ -17,6 +17,7 @@ use PHPStan\Analyser\Scope;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
+use PHPStan\Rules\RuleLevelHelper;
 use PHPStan\Type\Type;
 use PHPStan\Type\VerbosityLevel;
 use ValueError;
@@ -39,6 +40,7 @@ final class ViewCallSiteRule implements Rule
         private readonly TemplateFilePathResolver $templateFilePathResolver,
         private readonly SignatureMerger $signatureMerger,
         private readonly TypeStringValidator $typeStringValidator,
+        private readonly RuleLevelHelper $ruleLevelHelper,
     ) {
     }
 
@@ -142,8 +144,14 @@ final class ViewCallSiteRule implements Rule
             $expectedType = $this->typeStringValidator->resolve($expectedTypeString);
             assert($expectedType instanceof Type);
 
-            // Check if the provided type is accepted by the expected type
-            if (! $expectedType->isSuperTypeOf($providedType)->yes()) {
+            // Check acceptance the same way PHPStan checks a function argument:
+            // RuleLevelHelper honours the analysis level (checkExplicitMixed,
+            // checkNullables, checkUnionTypes), so a mixed value passed for a
+            // typed variable is only reported where PHPStan would report the
+            // equivalent function call. Being stricter than the configured level
+            // would surface errors the rest of the analysis never emits.
+            $accepts = $this->ruleLevelHelper->accepts($expectedType, $providedType, $scope->isDeclareStrictTypes());
+            if (! $accepts->result) {
                 $errors[] = RuleErrorBuilder::message(
                     sprintf(
                         'Template %s expects parameter $%s of type %s, but %s given.',
@@ -154,6 +162,7 @@ final class ViewCallSiteRule implements Rule
                     ),
                 )
                     ->identifier('bladestan.parameterType')
+                    ->acceptsReasonsTip($accepts->reasons)
                     ->build();
             }
         }
@@ -194,7 +203,8 @@ final class ViewCallSiteRule implements Rule
                 $expectedType = $this->typeStringValidator->resolve($expectedTypeString);
                 assert($expectedType instanceof Type);
 
-                if (! $expectedType->isSuperTypeOf($scopeType)->yes()) {
+                $accepts = $this->ruleLevelHelper->accepts($expectedType, $scopeType, $scope->isDeclareStrictTypes());
+                if (! $accepts->result) {
                     $errors[] = RuleErrorBuilder::message(
                         sprintf(
                             'Template %s expects parameter $%s of type %s, but %s given by the surrounding scope.',
@@ -205,6 +215,7 @@ final class ViewCallSiteRule implements Rule
                         ),
                     )
                         ->identifier('bladestan.parameterType')
+                        ->acceptsReasonsTip($accepts->reasons)
                         ->build();
                 }
 
