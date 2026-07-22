@@ -179,6 +179,33 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringNotContainsString('$componentName', $compiled);
     }
 
+    public function testDependencyHashDiffersForDifferentComponentScopes(): void
+    {
+        // components.panel is backed by App\View\Components\Panel and its
+        // reflected members feed the dependency hash; components.alert has no
+        // backing class, so the two must land on different hashes.
+        $panelHash = $this->bladeToPHPCompiler->getTemplateDependencyHash(
+            'components.panel',
+            (string) file_get_contents(__DIR__ . '/../skeleton/resources/views/components/panel.blade.php'),
+        );
+        $alertHash = $this->bladeToPHPCompiler->getTemplateDependencyHash(
+            'components.alert',
+            (string) file_get_contents(__DIR__ . '/../skeleton/resources/views/components/alert.blade.php'),
+        );
+
+        $this->assertNotSame($panelHash, $alertHash);
+    }
+
+    public function testDependencyHashIsStableForTheSameInputs(): void
+    {
+        $contents = (string) file_get_contents(__DIR__ . '/../skeleton/resources/views/components/panel.blade.php');
+
+        $this->assertSame(
+            $this->bladeToPHPCompiler->getTemplateDependencyHash('components.panel', $contents),
+            $this->bladeToPHPCompiler->getTemplateDependencyHash('components.panel', $contents),
+        );
+    }
+
     public function testCompileFailureIsEmbeddedAsErrorMarker(): void
     {
         $filePath = __DIR__ . '/../skeleton/resources/views/broken-heredoc.blade.php';

@@ -105,12 +105,18 @@ final class TemplateCompilationBootstrap
             }
 
             $sourceHash = hash('xxh128', $sourceContents);
+            // A composer's provided type or a reflected component/Livewire
+            // class's shape can change without touching this template's own
+            // source, so the source hash alone can't detect it; this is
+            // recomputed every run (even when $sourceHash matches) to catch it.
+            $dependencyHash = $this->bladeToPHPCompiler->getTemplateDependencyHash($viewName, $sourceContents);
             $relativeOutputPath = $this->relativeOutputPath($viewName);
             $outputPath = $this->compiledViewPath . '/' . $relativeOutputPath;
 
             $existingEntry = $manifest['templates'][$viewName] ?? null;
             if ($existingEntry !== null
                 && $existingEntry['sourceHash'] === $sourceHash
+                && $existingEntry['dependencyHash'] === $dependencyHash
                 && is_file($outputPath)
             ) {
                 $newEntries[$viewName] = $existingEntry;
@@ -139,6 +145,7 @@ final class TemplateCompilationBootstrap
             $newEntries[$viewName] = [
                 'source' => $filePath,
                 'sourceHash' => $sourceHash,
+                'dependencyHash' => $dependencyHash,
                 'output' => $relativeOutputPath,
             ];
         }
@@ -199,7 +206,7 @@ final class TemplateCompilationBootstrap
     }
 
     /**
-     * @return array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, output: string}>}|null
+     * @return array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>}|null
      */
     private function loadManifest(): ?array
     {
@@ -222,7 +229,7 @@ final class TemplateCompilationBootstrap
             return null;
         }
 
-        /** @var array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, output: string}>} $manifest */
+        /** @var array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>} $manifest */
         return $manifest;
     }
 

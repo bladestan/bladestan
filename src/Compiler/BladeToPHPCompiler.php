@@ -44,7 +44,7 @@ final class BladeToPHPCompiler
      * output layout changes, so a stale tree from an older scheme is wiped
      * instead of leaving orphans the per-view prune cannot reach.
      */
-    private const COMPILED_OUTPUT_VERSION = 4;
+    private const COMPILED_OUTPUT_VERSION = 5;
 
     /**
      * @see https://regex101.com/r/B3BbxW/1
@@ -121,6 +121,28 @@ final class BladeToPHPCompiler
             defined('LARAVEL_VERSION') ? LARAVEL_VERSION : '',
             $sharedTypes,
         ]));
+    }
+
+    /**
+     * Hash of this template's compilation inputs that live outside its own
+     * source text: the component-body scope (which reflects a backing
+     * component/Livewire class's public members) and any view composer data.
+     * Neither is visible to TemplateCompilationBootstrap's per-file source
+     * hash, since changing `App\View\Components\Panel::$heading` or a
+     * composer's provided value doesn't touch the .blade.php file at all.
+     * The bootstrap calls this on every run, even for a template whose source
+     * is unchanged, and recompiles when it differs from the manifest.
+     */
+    public function getTemplateDependencyHash(string $viewName, string $fileContents): string
+    {
+        $componentScope = $this->componentScopeResolver->resolve($viewName, $fileContents);
+
+        $viewDataTypes = [];
+        foreach ($this->getViewData($viewName) as $name => $type) {
+            $viewDataTypes[$name] = $type->describe(VerbosityLevel::cache());
+        }
+
+        return hash('xxh128', serialize([$componentScope, $viewDataTypes]));
     }
 
     /**

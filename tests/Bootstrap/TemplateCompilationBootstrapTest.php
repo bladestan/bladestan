@@ -67,6 +67,33 @@ final class TemplateCompilationBootstrapTest extends PHPStanTestCase
         $this->assertSame($past, filemtime($compiled), 'Unchanged template was recompiled');
     }
 
+    public function testRecompilesWhenDependencyHashChangesEvenIfSourceIsUnchanged(): void
+    {
+        // components.panel is backed by App\View\Components\Panel (reflected
+        // into the compiled output); its own .blade.php source never mentions
+        // the class's properties, so a shape change there leaves sourceHash
+        // untouched. Simulate that by corrupting the stored dependencyHash,
+        // standing in for what an outdated manifest looks like after the
+        // backing class or a view composer changed shape.
+        $templateCompilationBootstrap = $this->createBootstrap();
+        $templateCompilationBootstrap->run();
+
+        $compiled = $this->outputPath('components.panel');
+        $past = time() - 1000;
+        touch($compiled, $past);
+
+        $manifestPath = $this->compiledViewPath . '/' . self::MANIFEST;
+        /** @var array{templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>} $manifest */
+        $manifest = json_decode((string) file_get_contents($manifestPath), true);
+        $manifest['templates']['components.panel']['dependencyHash'] = 'stale-dependency-hash';
+        file_put_contents($manifestPath, (string) json_encode($manifest));
+
+        $templateCompilationBootstrap->run();
+
+        clearstatcache();
+        $this->assertNotSame($past, filemtime($compiled), 'Template with a stale dependencyHash was not recompiled');
+    }
+
     public function testPrunesOrphanedOutput(): void
     {
         $templateCompilationBootstrap = $this->createBootstrap();
@@ -79,11 +106,12 @@ final class TemplateCompilationBootstrapTest extends PHPStanTestCase
         file_put_contents($orphanPath, '<?php // orphan');
 
         $manifestPath = $this->compiledViewPath . '/' . self::MANIFEST;
-        /** @var array{templates: array<string, array{source: string, sourceHash: string, output: string}>} $manifest */
+        /** @var array{templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>} $manifest */
         $manifest = json_decode((string) file_get_contents($manifestPath), true);
         $manifest['templates']['orphaned-view'] = [
             'source' => '/gone/orphaned-view.blade.php',
             'sourceHash' => 'deadbeef',
+            'dependencyHash' => 'deadbeef',
             'output' => $orphanRelative,
         ];
         file_put_contents($manifestPath, (string) json_encode($manifest));
