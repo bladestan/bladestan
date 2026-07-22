@@ -101,17 +101,47 @@ final class TemplateCompilationBootstrap
 
             $sourceContents = @file_get_contents($filePath);
             if ($sourceContents === false) {
+                // A template that still exists but is momentarily unreadable
+                // (an editor's atomic-save window, a transient permission blip)
+                // must not be dropped: keep its prior manifest entry so the
+                // prune pass below leaves its compiled output in place. Only a
+                // template that is genuinely gone should lose its output.
+                if (is_file($filePath) && isset($manifest['templates'][$viewName])) {
+                    $newEntries[$viewName] = $manifest['templates'][$viewName];
+                }
+
                 continue;
             }
 
             $sourceHash = hash('xxh128', $sourceContents);
+            $relativeOutputPath = $this->relativeOutputPath($viewName);
+            $outputPath = $this->compiledViewPath . '/' . $relativeOutputPath;
+
             // A composer's provided type or a reflected component/Livewire
             // class's shape can change without touching this template's own
             // source, so the source hash alone can't detect it; this is
             // recomputed every run (even when $sourceHash matches) to catch it.
-            $dependencyHash = $this->bladeToPHPCompiler->getTemplateDependencyHash($viewName, $sourceContents);
-            $relativeOutputPath = $this->relativeOutputPath($viewName);
-            $outputPath = $this->compiledViewPath . '/' . $relativeOutputPath;
+            // Reflecting a backing class or running a view composer can throw
+            // here, outside compileStandalone()'s own handling — degrade to the
+            // same diagnostic stub a compile failure leaves rather than letting
+            // the throwable abort PHPStan's entire run. An empty dependency
+            // hash is never equal to a real one, so a later recovered run
+            // recompiles instead of the stub being pinned.
+            try {
+                /** @throws Throwable */
+                $dependencyHash = $this->bladeToPHPCompiler->getTemplateDependencyHash($viewName, $sourceContents);
+            } catch (Throwable $throwable) {
+                $stub = $this->bladeToPHPCompiler->errorStub(
+                    $filePath,
+                    "View [{$viewName}] could not be compiled: {$throwable->getMessage()}",
+                    'bladestan.compilation',
+                );
+                if ($this->writeAtomically($outputPath, $stub)) {
+                    $newEntries[$viewName] = $this->manifestEntry($filePath, $sourceHash, '', $relativeOutputPath);
+                }
+
+                continue;
+            }
 
             $existingEntry = $manifest['templates'][$viewName] ?? null;
             if ($existingEntry !== null
@@ -140,14 +170,9 @@ final class TemplateCompilationBootstrap
                 );
             }
 
-            $this->writeAtomically($outputPath, $phpFileContents);
-
-            $newEntries[$viewName] = [
-                'source' => $filePath,
-                'sourceHash' => $sourceHash,
-                'dependencyHash' => $dependencyHash,
-                'output' => $relativeOutputPath,
-            ];
+            if ($this->writeAtomically($outputPath, $phpFileContents)) {
+                $newEntries[$viewName] = $this->manifestEntry($filePath, $sourceHash, $dependencyHash, $relativeOutputPath);
+            }
         }
 
         // Prune outputs for templates that no longer exist.
@@ -267,21 +292,51 @@ final class TemplateCompilationBootstrap
     }
 
     /**
+     * A manifest entry describing one compiled template. Recorded only after
+     * its compiled output has actually landed on disk.
+     *
+     * @return array{source: string, sourceHash: string, dependencyHash: string, output: string}
+     */
+    private function manifestEntry(
+        string $filePath,
+        string $sourceHash,
+        string $dependencyHash,
+        string $relativeOutputPath,
+    ): array {
+        return [
+            'source' => $filePath,
+            'sourceHash' => $sourceHash,
+            'dependencyHash' => $dependencyHash,
+            'output' => $relativeOutputPath,
+        ];
+    }
+
+    /**
      * Write via temp file + rename so a partially written file is never
      * observable by a concurrently running PHPStan process.
+     *
+     * Returns whether the write landed. The caller records the new hashes in
+     * the manifest only on success: a silent failure that still recorded them
+     * would make every later run see the hashes match and skip recompiling,
+     * pinning the pre-edit compiled output until the template changes again.
      */
-    private function writeAtomically(string $path, string $contents): void
+    private function writeAtomically(string $path, string $contents): bool
     {
         $directory = dirname($path);
-        if (! is_dir($directory)) {
-            mkdir($directory, 0777, true);
+        if (! is_dir($directory) && ! mkdir($directory, 0777, true) && ! is_dir($directory)) {
+            return false;
         }
 
         $tempPath = $path . '.' . getmypid() . '.tmp';
         if (file_put_contents($tempPath, $contents) === false) {
-            return;
+            return false;
         }
 
-        rename($tempPath, $path);
+        if (! @rename($tempPath, $path)) {
+            @unlink($tempPath);
+            return false;
+        }
+
+        return true;
     }
 }

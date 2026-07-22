@@ -94,6 +94,42 @@ final class TemplateCompilationBootstrapTest extends PHPStanTestCase
         $this->assertNotSame($past, filemtime($compiled), 'Template with a stale dependencyHash was not recompiled');
     }
 
+    public function testKeepsCompiledOutputWhenSourceIsMomentarilyUnreadable(): void
+    {
+        $templateCompilationBootstrap = $this->createBootstrap();
+        $templateCompilationBootstrap->run();
+
+        $compiled = $this->outputPath('foo');
+        $this->assertFileExists($compiled);
+
+        $source = $this->projectRoot . '/tests/skeleton/resources/views/foo.blade.php';
+        $originalMode = fileperms($source) & 0777;
+
+        try {
+            chmod($source, 0000);
+            clearstatcache();
+            // On a permissive environment (e.g. running as root) the file stays
+            // readable, so the branch under test never triggers; skip rather
+            // than assert a condition we can't create.
+            if (@file_get_contents($source) !== false) {
+                $this->markTestSkipped('Cannot make the source unreadable in this environment.');
+            }
+
+            $past = time() - 1000;
+            touch($compiled, $past);
+
+            $templateCompilationBootstrap->run();
+
+            clearstatcache();
+            // The template still exists, so its compiled output must survive
+            // the prune pass untouched instead of being deleted as an orphan.
+            $this->assertFileExists($compiled);
+            $this->assertSame($past, filemtime($compiled), 'A readable-but-unchanged template was recompiled or dropped');
+        } finally {
+            chmod($source, $originalMode);
+        }
+    }
+
     public function testPrunesOrphanedOutput(): void
     {
         $templateCompilationBootstrap = $this->createBootstrap();

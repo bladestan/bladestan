@@ -5,13 +5,10 @@ declare(strict_types=1);
 namespace Bladestan\PHPStan;
 
 use Bladestan\Compiler\SignatureExtractor;
+use Bladestan\Discovery\BladeFileIterator;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\View\FileViewFinder;
 use PHPStan\Analyser\ResultCache\ResultCacheMetaExtension;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use RecursiveRegexIterator;
-use RegexIterator;
 use SplFileInfo;
 use UnexpectedValueException;
 
@@ -96,12 +93,8 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
                 continue;
             }
 
-            $directory = new RecursiveDirectoryIterator($path);
-            $iterator = new RecursiveIteratorIterator($directory);
-            $regex = new RegexIterator($iterator, '/\.blade\.php$/', RecursiveRegexIterator::MATCH);
-
             /** @var SplFileInfo $fileInfo */
-            foreach ($regex as $fileInfo) {
+            foreach (BladeFileIterator::over($path) as $fileInfo) {
                 $files[] = $fileInfo->getPathname();
             }
         }

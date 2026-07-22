@@ -6,10 +6,6 @@ namespace Bladestan\Discovery;
 
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\View\FileViewFinder;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use RecursiveRegexIterator;
-use RegexIterator;
 use SplFileInfo;
 use UnexpectedValueException;
 
@@ -93,19 +89,12 @@ final class TemplateDiscovery
 
         $map = [];
 
-        $directory = new RecursiveDirectoryIterator($realPath);
-        $iterator = new RecursiveIteratorIterator($directory);
-        $regex = new RegexIterator($iterator, '/\.blade\.php$/', RecursiveRegexIterator::MATCH);
-
         /** @var SplFileInfo $fileInfo */
-        foreach ($regex as $fileInfo) {
+        foreach (BladeFileIterator::over($realPath) as $fileInfo) {
             $absolutePath = $fileInfo->getPathname();
 
-            // Convert absolute path to a relative view name:
-            // /path/to/views/welcome.blade.php → welcome
-            // /path/to/views/layouts/app.blade.php → layouts.app
             $relativePath = substr($absolutePath, strlen($realPath) + 1);
-            $viewName = str_replace([DIRECTORY_SEPARATOR, '.blade.php'], ['.', ''], $relativePath);
+            $viewName = $this->viewNameFromRelativePath($relativePath);
 
             if ($namespace !== null) {
                 $viewName = $namespace . '::' . $viewName;
@@ -115,5 +104,27 @@ final class TemplateDiscovery
         }
 
         return $map;
+    }
+
+    /**
+     * Derive a Laravel view name from a template's path relative to its view
+     * root:
+     *   'welcome.blade.php'      → 'welcome'
+     *   'layouts/app.blade.php'  → 'layouts.app'
+     *
+     * Only the trailing `.blade.php` suffix is stripped and the dots come from
+     * directory separators alone. A blanket str_replace of both would also
+     * strip a `.blade.php` occurring mid-name and turn a literal dot in a
+     * filename into a separator, so `foo.bar.blade.php` and `foo/bar.blade.php`
+     * would collapse to the same name and the first discovered would shadow the
+     * other. Laravel resolves a view name by turning dots into slashes, so only
+     * `foo/bar.blade.php` is ever reachable as `foo.bar`; deriving the name the
+     * same way keeps the reachable template from being shadowed.
+     */
+    private function viewNameFromRelativePath(string $relativePath): string
+    {
+        $withoutSuffix = substr($relativePath, 0, -strlen('.blade.php'));
+
+        return str_replace(DIRECTORY_SEPARATOR, '.', $withoutSuffix);
     }
 }

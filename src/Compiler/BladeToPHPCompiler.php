@@ -59,9 +59,16 @@ final class BladeToPHPCompiler
     private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
 
     /**
+     * Initialized at declaration, not only in compileStandalone(): the error
+     * sink is also reached by getTemplateDependencyHash() (via getViewDataRaw),
+     * which the bootstrap calls for every template on every run — including a
+     * fully cached run that never enters compileStandalone(). Leaving it
+     * uninitialized there would fatal a throwing composer with "typed property
+     * accessed before initialization".
+     *
      * @var list<array{0: string, 1: string}>
      */
-    private array $errors;
+    private array $errors = [];
 
     /**
      * @var array<string, Type>
