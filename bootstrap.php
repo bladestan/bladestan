@@ -41,10 +41,11 @@ if (! defined('LARAVEL_START')) {
 // PHPStan runs bootstrap files in every process. Derive the command and
 // worker flags once, up front, from argv (which is available before the app
 // boots): the loud dependency warning below needs them, and so do the later
-// advisories and the compile guard. WorkerCommand and FixerWorkerCommand both
-// go through CommandHelper::begin(), so only the main process reports or
-// compiles; recompiling from a worker would race sibling workers analyzing the
-// compiled files.
+// advisories and the compile guard. Compilation runs only under the analyse
+// command: it is the only command that analyses the compiled files, so it is
+// the only one that should build them. Workers (WorkerCommand, FixerWorkerCommand)
+// are excluded on top of that, because recompiling from a worker would race
+// sibling workers analyzing the compiled files.
 $bladestanArgv = $_SERVER['argv'] ?? [];
 $bladestanIsWorkerProcess = in_array($bladestanArgv[1] ?? '', ['worker', 'fixer:worker'], true);
 $bladestanIsAnalyseCommand = in_array($bladestanArgv[1] ?? '', ['analyse', 'analyze'], true);
@@ -153,11 +154,10 @@ if (isset($container) && $container instanceof PHPStan\DependencyInjection\Conta
                 }
             }
         } catch (Throwable) {
-            // Only the main analyse process warns: workers run the `worker`
-            // command (not `analyse`), and repeating this from each of them
-            // would bury the message. Other commands that load this bootstrap
-            // (clear-result-cache, diagnose) do not compile, so the warning
-            // would be noise there.
+            // Only the analyse command warns: it is the only command that
+            // compiles (see the compile gate below), so clear-result-cache,
+            // diagnose, and the parallel workers — which also load this
+            // bootstrap but never build templates — have nothing to warn about.
             if ($bladestanIsAnalyseCommand) {
                 fwrite(
                     STDERR,
@@ -169,6 +169,16 @@ if (isset($container) && $container instanceof PHPStan\DependencyInjection\Conta
         }
     }
 }
+
+// Compilation only runs under the `analyse`/`analyze` command. Other commands
+// that load this bootstrap (clear-result-cache, diagnose, dump-parameters) call
+// CommandHelper::begin() with an empty CLI path list, which substitutes the
+// config's `paths` — so `.bladestan` lands in analysedPaths and
+// $bladestanShouldCompile is true for them too. Compiling from there is
+// surprising (a cache clear should not rebuild templates) and a compile failure
+// would abort the command's real work, so gate every compilation action on the
+// analyse command. Workers already skip compilation via $bladestanIsWorkerProcess.
+$bladestanShouldCompile = $bladestanShouldCompile && $bladestanIsAnalyseCommand;
 
 // The compiled directory must exist before PHPStan's file discovery runs.
 if ($bladestanShouldCompile && ! is_dir($bladestanCompiledViewPath)) {
