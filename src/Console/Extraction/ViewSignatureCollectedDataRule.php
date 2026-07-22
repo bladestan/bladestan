@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\Console\Extraction;
 
+use Bladestan\Compiler\TypeStringValidator;
 use Bladestan\NodeAnalyzer\TemplateFilePathResolver;
 use InvalidArgumentException;
 use PhpParser\Node;
@@ -12,16 +13,18 @@ use PHPStan\Node\CollectedDataNode;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
 use PHPStan\Rules\RuleErrorBuilder;
+use PHPStan\Type\MixedType;
+use PHPStan\Type\NullType;
+use PHPStan\Type\Type;
+use PHPStan\Type\TypeCombinator;
+use PHPStan\Type\VerbosityLevel;
 use function array_column;
 use function array_filter;
 use function array_key_exists;
 use function array_keys;
 use function array_values;
 use function count;
-use function implode;
-use function in_array;
 use function json_encode;
-use function usort;
 use const JSON_UNESCAPED_SLASHES;
 
 /**
@@ -63,6 +66,7 @@ final class ViewSignatureCollectedDataRule implements Rule
 
     public function __construct(
         private readonly TemplateFilePathResolver $templateFilePathResolver,
+        private readonly TypeStringValidator $typeStringValidator,
     ) {
     }
 
@@ -193,23 +197,24 @@ final class ViewSignatureCollectedDataRule implements Rule
      * Union the per-site type maps into one variable => type map. The type of a
      * variable is the union of the types each map gives it; a variable absent
      * from some of the `$siteCount` maps gains `null`, since it may be absent at
-     * runtime. Types are unioned at the string level (already fully-qualified,
-     * parser-safe descriptions), with `null` kept last so the result reads as
-     * `T|null`.
+     * runtime. The harvested type strings are resolved back to PHPStan `Type`
+     * objects and combined with {@see TypeCombinator::union()}, so the merge
+     * inherits PHPStan's own union semantics (deduplication, subtype absorption,
+     * `null`-last ordering) rather than reimplementing them on strings.
      *
      * A site that resolves to `mixed` contributes nothing: `mixed` absorbs every
-     * type, so `App\Foo|mixed` would collapse to a bare `mixed` and throw away
-     * the one type another site pinned down, leaving a signature that looks typed
-     * but checks nothing. So `mixed` is dropped whenever a concrete type is known,
-     * and kept only when it is all there is (the honest "unresolved" result the
-     * author then replaces by hand).
+     * type, so `TypeCombinator::union(App\Foo, mixed)` collapses to a bare `mixed`
+     * and throws away the one type another site pinned down, leaving a signature
+     * that looks typed but checks nothing. So `mixed` is dropped whenever a
+     * concrete type is known, and kept only when it is all there is (the honest
+     * "unresolved" result the author then replaces by hand).
      *
      * @param list<array<string, string>> $maps
      * @return array<string, string>
      */
     private function mergeTypeMaps(array $maps, int $siteCount): array
     {
-        /** @var array<string, list<string>> $typesByName */
+        /** @var array<string, list<Type>> $typesByName */
         $typesByName = [];
         /** @var array<string, int> $presenceByName */
         $presenceByName = [];
@@ -220,71 +225,53 @@ final class ViewSignatureCollectedDataRule implements Rule
                 $presenceByName[$name] ??= 0;
                 $presenceByName[$name]++;
 
-                foreach ($this->splitTopLevelUnion($type) as $part) {
-                    if (! in_array($part, $typesByName[$name], true)) {
-                        $typesByName[$name][] = $part;
-                    }
-                }
+                // The strings were validated when the collector produced them,
+                // so resolve() succeeds; a mixed fallback keeps a stray null
+                // resolution honest rather than fatal.
+                $typesByName[$name][] = $this->typeStringValidator->resolve($type) ?? new MixedType();
             }
         }
 
         $merged = [];
-        foreach ($typesByName as $name => $parts) {
-            if (in_array('mixed', $parts, true)) {
-                $concreteParts = array_values(array_filter($parts, static fn (string $part): bool => $part !== 'mixed'));
-                if ($concreteParts === []) {
-                    // Every site was unresolved: keep the honest bare mixed.
-                    // It already subsumes absence, so no `null` is appended.
-                    $merged[$name] = 'mixed';
-                    continue;
-                }
+        foreach ($typesByName as $name => $types) {
+            $concreteTypes = array_values(
+                array_filter($types, static fn (Type $type): bool => ! $type instanceof MixedType),
+            );
 
-                $parts = $concreteParts;
+            if ($concreteTypes === []) {
+                // Every site was unresolved: keep the honest bare mixed. It
+                // already subsumes absence, so no `null` is added.
+                $merged[$name] = 'mixed';
+                continue;
             }
 
-            if ($presenceByName[$name] < $siteCount && ! in_array('null', $parts, true)) {
-                $parts[] = 'null';
+            $types = $concreteTypes;
+            if ($presenceByName[$name] < $siteCount) {
+                $types[] = new NullType();
             }
 
-            // Keep null last for readability (T|null reads better than null|T).
-            usort($parts, fn (string $a, string $b): int => ($a === 'null' ? 1 : 0) <=> ($b === 'null' ? 1 : 0));
-
-            $merged[$name] = implode('|', $parts);
+            $merged[$name] = $this->describeType(TypeCombinator::union(...$types));
         }
 
         return $merged;
     }
 
     /**
-     * Split a union type on its top-level `|` only. A naive explode would cut
-     * inside generics and array shapes (`array<int, User|Admin>`), and the
-     * dedup above could then drop a closing segment one generic shares with
-     * another, corrupting the merged type.
-     *
-     * @return list<string>
+     * Print a merged type as parser-safe, fully-qualified PHPDoc suited to a
+     * written signature. The precise description is used when PHPStan's own
+     * PHPDoc parser accepts it and the coarser type-only description otherwise,
+     * mirroring {@see ViewDataCollector::describeType()} so a harvested type and
+     * a merged one read the same way.
      */
-    private function splitTopLevelUnion(string $type): array
+    private function describeType(Type $type): string
     {
-        $parts = [];
-        $depth = 0;
-        $current = '';
-
-        foreach (str_split($type) as $char) {
-            if (in_array($char, ['<', '(', '{'], true)) {
-                $depth++;
-            } elseif (in_array($char, ['>', ')', '}'], true)) {
-                $depth--;
-            } elseif ($char === '|' && $depth === 0) {
-                $parts[] = $current;
-                $current = '';
-                continue;
+        foreach ([VerbosityLevel::precise(), VerbosityLevel::typeOnly()] as $verbosityLevel) {
+            $described = $type->describe($verbosityLevel);
+            if ($this->typeStringValidator->isValid($described)) {
+                return $described;
             }
-
-            $current .= $char;
         }
 
-        $parts[] = $current;
-
-        return $parts;
+        return 'mixed';
     }
 }

@@ -32,7 +32,7 @@ final class ViewSignatureCollectedDataRuleTest extends RuleTestCase
         // one, so it is made nullable.
         self::assertSame(
             [
-                'title' => 'string|int',
+                'title' => 'int|string',
                 'user' => 'App\Models\User|null',
             ],
             $signature['variables'],
