@@ -81,6 +81,7 @@ final class BladeToPHPCompiler
         private readonly SimplePhpParser $simplePhpParser,
         private readonly SignatureExtractor $signatureExtractor,
         private readonly ComponentScopeResolver $componentScopeResolver,
+        private readonly TypeStringValidator $typeStringValidator,
     ) {
         $this->viewFactory = resolve(ViewFactory::class);
         $errorClass = ViewErrorBag::class;
@@ -446,7 +447,7 @@ final class BladeToPHPCompiler
                 continue;
             }
 
-            $typeStr = $type->describe(VerbosityLevel::typeOnly());
+            $typeStr = $this->describeType($type);
             $nop = new Nop();
             $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
             $varNops[] = $nop;
@@ -459,7 +460,7 @@ final class BladeToPHPCompiler
                 continue;
             }
 
-            $typeStr = $type->describe(VerbosityLevel::typeOnly());
+            $typeStr = $this->describeType($type);
             $nop = new Nop();
             $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
             $varNops[] = $nop;
@@ -469,6 +470,27 @@ final class BladeToPHPCompiler
         $stmts = [...$varNops, ...$this->simplePhpParser->parse($phpCode)];
 
         return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
+    }
+
+    /**
+     * Describe a PHPStan Type as a PHPDoc type string safe to emit into a
+     * compiled `@var`. `describe()` output is not always re-parseable PHPDoc
+     * (an accessory type such as `hasOffsetValue(...)`, an unresolved template
+     * placeholder), and an unparseable type on a header line becomes an
+     * invalid-PHPDoc error against generated code. The precise description is
+     * used when PHPStan's own parser accepts it, then the coarser type-only
+     * one, then `mixed`. Mirrors the signature generator's own fallback.
+     */
+    private function describeType(Type $type): string
+    {
+        foreach ([VerbosityLevel::precise(), VerbosityLevel::typeOnly()] as $verbosityLevel) {
+            $described = $type->describe($verbosityLevel);
+            if ($this->typeStringValidator->isValid($described)) {
+                return $described;
+            }
+        }
+
+        return 'mixed';
     }
 
     /**
