@@ -483,7 +483,7 @@ final class BladeToPHPCompiler
      * Describe a PHPStan Type as a PHPDoc type string safe to emit into a
      * compiled `@var`. `describe()` output is not always re-parseable PHPDoc
      * (an accessory type such as `hasOffsetValue(...)`, an unresolved template
-     * placeholder), and an unparseable type on a header line becomes an
+     * placeholder), and an unparsable type on a header line becomes an
      * invalid-PHPDoc error against generated code. The precise description is
      * used when PHPStan's own parser accepts it, then the coarser type-only
      * one, then `mixed`. Mirrors the signature generator's own fallback.

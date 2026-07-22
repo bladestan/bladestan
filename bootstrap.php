@@ -10,6 +10,7 @@ use Bladestan\Compiler\ComponentScopeResolver;
 use Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
 use Bladestan\Compiler\LivewireTagCompiler;
 use Bladestan\Compiler\SignatureExtractor;
+use Bladestan\Compiler\TypeStringValidator;
 use Bladestan\Discovery\TemplateDiscovery;
 use Bladestan\Laravel\View\BladeCompilerFactory;
 use Bladestan\NodeAnalyzer\ValueResolver;
@@ -23,6 +24,9 @@ use Laravel\Lumen\Application as LumenApplication;
 use Orchestra\Testbench\Concerns\CreatesApplication;
 use PhpParser\ConstExprEvaluator;
 use PhpParser\PrettyPrinter\Standard;
+use PHPStan\PhpDoc\TypeStringResolver;
+use PHPStan\PhpDocParser\Lexer\Lexer;
+use PHPStan\PhpDocParser\Parser\TypeParser;
 
 if (! defined('LARAVEL_START')) {
     define('LARAVEL_START', microtime(true));
@@ -52,6 +56,11 @@ $bladestanReportUnanalysed = true;
 $bladestanErrorFormatConfigured = false;
 /** @var list<string> $bladestanAnalysedPaths */
 $bladestanAnalysedPaths = [];
+// Set when the compiled directory is among the analysed paths *by name* but
+// resolves to a different real directory than compiledViewPath — the
+// cwd-vs-config-dir divergence. Used to warn instead of silently leaving
+// templates unanalysed.
+$bladestanDivergentCandidate = null;
 if (isset($container) && $container instanceof PHPStan\DependencyInjection\Container) {
     try {
         /** @var array{compiledViewPath: string, reportUnanalysedTemplates?: bool} $bladestanParameters */
@@ -83,11 +92,64 @@ if (isset($container) && $container instanceof PHPStan\DependencyInjection\Conta
         try {
             /** @var list<string> $bladestanAnalysedPaths */
             $bladestanAnalysedPaths = $container->getParameter('analysedPaths');
-            $bladestanNormalizedTarget = rtrim(str_replace('\\', '/', $bladestanCompiledViewPath), '/');
+
+            // Canonicalize a path so two spellings of the same location compare
+            // equal: resolve `\` to `/`, then realpath the deepest ancestor that
+            // exists and re-append the rest. The compiled directory may not exist
+            // on a first run, so realpath cannot be applied to it whole; walking
+            // up to the nearest existing parent still collapses symlinks and
+            // `.`/`..` segments (e.g. a symlinked project root, or macOS
+            // `/var` -> `/private/var`) that a raw string compare would miss.
+            $bladestanCanonicalize = static function (string $path): string {
+                $path = rtrim(str_replace('\\', '/', $path), '/');
+                $suffix = '';
+                $probe = $path;
+                while ($probe !== '' && $probe !== '/') {
+                    $real = realpath($probe);
+                    if ($real !== false) {
+                        return rtrim(str_replace('\\', '/', $real), '/') . $suffix;
+                    }
+
+                    $slash = strrpos($probe, '/');
+                    if ($slash === false || $slash === 0) {
+                        break;
+                    }
+
+                    $suffix = substr($probe, $slash) . $suffix;
+                    $probe = substr($probe, 0, $slash);
+                }
+
+                return $path;
+            };
+
+            // Compile when the compiled directory is an analysed path *or* nested
+            // inside one. PHPStan's file discovery walks into subdirectories, so
+            // `paths: [build]` with `compiledViewPath: build/bladestan` analyses
+            // the compiled files just as directly as listing them explicitly;
+            // requiring exact equality left that output discovered but never
+            // refreshed, so it went permanently stale with no warning.
+            $bladestanTarget = $bladestanCanonicalize($bladestanCompiledViewPath);
+            $bladestanTargetBasename = basename($bladestanTarget);
             foreach ($bladestanAnalysedPaths as $bladestanAnalysedPath) {
-                if (rtrim(str_replace('\\', '/', $bladestanAnalysedPath), '/') === $bladestanNormalizedTarget) {
+                $bladestanCandidate = $bladestanCanonicalize($bladestanAnalysedPath);
+                if ($bladestanTarget === $bladestanCandidate
+                    || str_starts_with($bladestanTarget, $bladestanCandidate . '/')
+                ) {
                     $bladestanShouldCompile = true;
                     break;
+                }
+
+                // An analysed path named like the compiled directory but
+                // resolving elsewhere: the user added the compiled directory to
+                // `paths` (which PHPStan absolutizes against the config file)
+                // while compiledViewPath absolutized against the process cwd,
+                // and the two are genuinely different real directories. There is
+                // no `%configDir%` neon variable to anchor both sides to, so the
+                // best we can do from the bootstrap is remember the mismatch and
+                // report it loudly below rather than compile into one directory
+                // while PHPStan analyses the other in silence.
+                if (basename($bladestanCandidate) === $bladestanTargetBasename) {
+                    $bladestanDivergentCandidate = $bladestanCandidate;
                 }
             }
         } catch (Throwable) {
@@ -206,15 +268,43 @@ if (isset($app)) {
             // Template discovery failed (e.g. no bootable app) — skip the check.
         }
 
+        // Advisory: the compiled directory is in `paths` but resolves to a
+        // different real directory than compiledViewPath. This is the
+        // cwd-vs-config-dir divergence: templates are compiled into one
+        // directory while PHPStan analyses the other, so nothing is refreshed
+        // and no template body is analysed. It is an active misconfiguration
+        // (the user did add the directory to `paths`), so warn even when
+        // reportUnanalysedTemplates is off, and in place of the generic
+        // "missing from paths" advisory below, which would be misleading here.
+        if ($bladestanIsAnalyseCommand
+            && $bladestanConflicts === []
+            && $bladestanExtensionLoaded
+            && ! $bladestanShouldCompile
+            && $bladestanDivergentCandidate !== null
+        ) {
+            fwrite(
+                STDERR,
+                sprintf(
+                    'Warning: Bladestan compiles templates to "%s", but PHPStan is analysing "%s" instead (same name, different directory), so no template body is analysed. '
+                    . 'PHPStan resolves "paths" against the config file while compiledViewPath resolves against the working directory, so running PHPStan from a directory other than the one holding its config file makes the two diverge. '
+                    . "Run PHPStan from the directory holding your config file, or set parameters.bladestan.compiledViewPath to an absolute path.\n",
+                    $bladestanCompiledViewPath,
+                    $bladestanDivergentCandidate,
+                ),
+            );
+        }
+
         // Advisory: Bladestan is installed but `.bladestan` is not among the
         // analysed paths, so template bodies go unanalysed. Skip this when a
         // raw view directory was already flagged above (that message tells the
-        // user to add `.bladestan`), and let users who only want call-site
+        // user to add `.bladestan`) or when the divergence advisory above
+        // already explained the mismatch, and let users who only want call-site
         // validation silence it with `bladestan.reportUnanalysedTemplates`.
         if ($bladestanIsAnalyseCommand
             && $bladestanConflicts === []
             && $bladestanExtensionLoaded
             && ! $bladestanShouldCompile
+            && $bladestanDivergentCandidate === null
             && $bladestanReportUnanalysed
         ) {
             fwrite(
@@ -265,6 +355,17 @@ if (isset($app)) {
 
             $bladeCompiler = (new BladeCompilerFactory())->create();
 
+            // TypeStringValidator wraps PHPStan's own phpdoc lexer/parser and
+            // type resolver, so pull those from PHPStan's container rather than
+            // rebuilding them (they need PHPStan's ParserConfig). $container is
+            // guaranteed a PHPStan container here: $bladestanShouldCompile can
+            // only be true after the container branch above resolved it.
+            $typeStringValidator = new TypeStringValidator(
+                $container->getByType(Lexer::class),
+                $container->getByType(TypeParser::class),
+                $container->getByType(TypeStringResolver::class),
+            );
+
             $bladeToPhpCompiler = new BladeToPHPCompiler(
                 $bladeCompiler,
                 $printerStandard,
@@ -276,6 +377,7 @@ if (isset($app)) {
                 $simplePhpParser,
                 $signatureExtractor,
                 new ComponentScopeResolver($bladeCompiler, $arrayStringToArrayConverter),
+                $typeStringValidator,
             );
 
             (new TemplateCompilationBootstrap(
