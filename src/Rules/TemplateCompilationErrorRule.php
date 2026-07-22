@@ -96,7 +96,7 @@ final class TemplateCompilationErrorRule implements Rule
 
     private function isCompiledBladeFile(string $filePath): bool
     {
-        $normalizedCompiled = rtrim($this->compiledViewPath, '/\\') . DIRECTORY_SEPARATOR;
+        $normalizedCompiled = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, rtrim($this->compiledViewPath, '/\\')) . DIRECTORY_SEPARATOR;
         $normalizedFile = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $filePath);
 
         return str_starts_with($normalizedFile, $normalizedCompiled);
