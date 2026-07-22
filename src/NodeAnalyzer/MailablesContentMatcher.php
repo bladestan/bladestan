@@ -38,6 +38,7 @@ final class MailablesContentMatcher
         $constructorParameterNames = ['view', 'html', 'text', 'markdown', 'with', 'htmlString'];
 
         $viewNames = [];
+        $dataResolved = true;
         $parametersArray = $this->magicViewWithCallParameterResolver->resolve($new, $scope);
         foreach ($new->getArgs() as $position => $argument) {
             $argName = $argument->name === null
@@ -55,6 +56,7 @@ final class MailablesContentMatcher
                 $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray(
                     $argument,
                     $scope,
+                    $dataResolved,
                 ) + $parametersArray;
             }
         }
@@ -65,7 +67,7 @@ final class MailablesContentMatcher
 
         $templates = [];
         foreach ($viewNames as $viewName) {
-            $templates[] = new RenderTemplateWithParameters($viewName, $parametersArray);
+            $templates[] = new RenderTemplateWithParameters($viewName, $parametersArray, false, ! $dataResolved);
         }
 
         return $templates;

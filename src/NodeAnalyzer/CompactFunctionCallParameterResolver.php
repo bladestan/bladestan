@@ -13,16 +13,22 @@ use PHPStan\Type\Type;
 final class CompactFunctionCallParameterResolver
 {
     /**
+     * @param bool $resolved Set to false when a compact() argument isn't a
+     * string literal, so the variable it names can't be determined.
+     *
      * @return array<string, Type>
      */
-    public function resolveParameters(FuncCall $compactFuncCall, Scope $scope): array
+    public function resolveParameters(FuncCall $compactFuncCall, Scope $scope, bool &$resolved = true): array
     {
         $resultArray = [];
+        $resolved = true;
 
         $funcArgs = $compactFuncCall->getArgs();
 
         foreach ($funcArgs as $funcArg) {
             if (! $funcArg->value instanceof String_) {
+                $resolved = false;
+
                 continue;
             }
 

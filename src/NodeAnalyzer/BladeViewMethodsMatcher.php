@@ -121,19 +121,24 @@ final class BladeViewMethodsMatcher
             ];
         }
 
+        $dataResolved = true;
         if ($methodName === self::EACH) {
             $parametersArray += $this->getEachVariables($methodCall, $scope);
         } else {
             $arg = $this->findTemplateDataArgument($methodName, $methodCall);
             if ($arg instanceof Arg) {
-                $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
+                $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray(
+                    $arg,
+                    $scope,
+                    $dataResolved,
+                );
             }
         }
 
         $nativeReflection = $calledOnType->getObjectClassReflections()[0];
         $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
 
-        return [new RenderTemplateWithParameters($template, $parametersArray)];
+        return [new RenderTemplateWithParameters($template, $parametersArray, false, ! $dataResolved)];
     }
 
     private function resolveName(MethodCall $methodCall): ?string

@@ -12,14 +12,21 @@ use PHPStan\Type\Type;
 final class TemplateVariableTypesResolver
 {
     /**
+     * @param bool $resolved Set to false when an item can't be attributed to
+     * a known variable name (an unpacked spread, or a non-constant key), so
+     * the array's full shape isn't known.
+     *
      * @return array<string, Type>
      */
-    public function resolveArray(Array_ $array, Scope $scope): array
+    public function resolveArray(Array_ $array, Scope $scope, bool &$resolved = true): array
     {
         $variableNamesToTypes = [];
+        $resolved = true;
 
         foreach ($array->items as $arrayItem) {
             if (! $arrayItem->key instanceof Expr) {
+                $resolved = false;
+
                 continue;
             }
 
@@ -27,6 +34,8 @@ final class TemplateVariableTypesResolver
 
             $keyName = $arrayItemValue->getConstantStrings();
             if (count($keyName) !== 1) {
+                $resolved = false;
+
                 continue;
             }
 

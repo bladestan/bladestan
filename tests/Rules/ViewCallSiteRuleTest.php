@@ -98,6 +98,11 @@ final class ViewCallSiteRuleTest extends RuleTestCase
             ['Template invalid-signature-type expects parameter $title of type string, but int given.', 16],
         ]];
 
+        // A data argument whose array shape can't be statically determined
+        // (a typed parameter, array_merge()) must not report every signature
+        // variable as missing — the opaque value may supply any of them.
+        yield [__DIR__ . '/Fixture/view-call-site-unresolvable-data.php', []];
+
         // Scope forwarding (compiled @include): variables in the surrounding
         // scope satisfy the signature, with their types still validated.
         yield [__DIR__ . '/Fixture/view-call-site-scope-forwarding.php', [

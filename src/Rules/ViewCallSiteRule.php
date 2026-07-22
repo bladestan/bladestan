@@ -187,8 +187,16 @@ final class ViewCallSiteRule implements Rule
             }
         }
 
-        // Validate: check for missing required variables
+        // Validate: check for missing required variables. Skipped entirely
+        // when the data argument's shape couldn't be resolved (e.g.
+        // array_merge(), a typed variable): an opaque value may supply any
+        // variable the signature requires, so "not found in $providedParams"
+        // no longer means "not provided".
         foreach ($templateSignature->variables as $varName => $expectedTypeString) {
+            if ($renderTemplateWithParameters->hasUnresolvedData) {
+                continue;
+            }
+
             if (isset($providedParams[$varName])) {
                 continue;
             }

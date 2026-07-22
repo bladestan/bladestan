@@ -22,6 +22,14 @@ final class RenderTemplateWithParameters
          * signature.
          */
         public readonly bool $forwardsScope = false,
+        /**
+         * True when the data argument's array shape couldn't be fully
+         * resolved (e.g. a typed variable, `array_merge()`), so an opaque
+         * value may still supply a signature variable that looks unprovided.
+         * A missing-parameter error would be a false positive here, so that
+         * check must be skipped for this call site.
+         */
+        public readonly bool $hasUnresolvedData = false,
     ) {
     }
 }

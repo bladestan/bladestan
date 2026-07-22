@@ -76,8 +76,13 @@ final class LaravelViewFunctionMatcher
 
         $parametersArray = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
 
+        $dataResolved = true;
         if (count($args) >= 2) {
-            $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
+            $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray(
+                $args[1],
+                $scope,
+                $dataResolved,
+            );
         }
 
         // Only a component's template receives the enclosing class's public
@@ -99,6 +104,13 @@ final class LaravelViewFunctionMatcher
             && $args[2]->value->name instanceof Name
             && $args[2]->value->name->toLowerString() === 'get_defined_vars';
 
-        return [new RenderTemplateWithParameters($template->value, $parametersArray, $forwardsScope)];
+        return [
+            new RenderTemplateWithParameters(
+                $template->value,
+                $parametersArray,
+                $forwardsScope,
+                ! $dataResolved,
+            ),
+        ];
     }
 }
