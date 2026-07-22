@@ -179,6 +179,21 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringNotContainsString('$componentName', $compiled);
     }
 
+    public function testCompileFailureIsEmbeddedAsErrorMarker(): void
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/broken-heredoc.blade.php';
+        $this->assertFileExists($filePath);
+
+        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(realpath($filePath) ?: $filePath, 'broken-heredoc');
+
+        // The failure is recorded as a structured error and persisted into the
+        // compiled output as a marker, so the template is not silently dropped.
+        $this->assertNotSame([], $phpFileContentsWithLineMap->errors);
+        $this->assertSame('bladestan.parsing', $phpFileContentsWithLineMap->errors[0][1]);
+        $this->assertStringContainsString('// @bladestan-error: ', $phpFileContentsWithLineMap->phpFileContents);
+        $this->assertStringContainsString('"identifier":"bladestan.parsing"', $phpFileContentsWithLineMap->phpFileContents);
+    }
+
     /**
      * @return list<string>
      */

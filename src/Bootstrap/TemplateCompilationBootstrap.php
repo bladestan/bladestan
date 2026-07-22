@@ -120,16 +120,21 @@ final class TemplateCompilationBootstrap
             try {
                 /** @throws Throwable */
                 $result = $this->bladeToPHPCompiler->compileStandalone($filePath, $viewName);
-            } catch (Throwable) {
-                // Uncompilable template: make sure no stale output survives.
-                if (is_file($outputPath)) {
-                    @unlink($outputPath);
-                }
-
-                continue;
+                $phpFileContents = $result->phpFileContents;
+            } catch (Throwable $throwable) {
+                // A template that throws during compilation must still leave a
+                // signal, or it drops out of analysis silently. Overwrite any
+                // stale output with a diagnostic shell TemplateCompilationErrorRule
+                // surfaces, and record it so the entry is neither pruned nor
+                // recompiled until the source changes.
+                $phpFileContents = $this->bladeToPHPCompiler->errorStub(
+                    $filePath,
+                    "View [{$viewName}] could not be compiled: {$throwable->getMessage()}",
+                    'bladestan.compilation',
+                );
             }
 
-            $this->writeAtomically($outputPath, $result->phpFileContents);
+            $this->writeAtomically($outputPath, $phpFileContents);
 
             $newEntries[$viewName] = [
                 'source' => $filePath,

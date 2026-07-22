@@ -21,6 +21,8 @@ recompiled and re-analysed at every `view()` call. See
   existing usage.
 - Errors are now reported directly against the `.blade.php` file and line
   where they occur, instead of at the `view()` call site.
+- A template that fails to compile is reported as an error against the
+  template, instead of dropping out of analysis without a trace.
 - AI agent guidance for writing signatures, discoverable via Laravel Boost.
 
 ### Changed

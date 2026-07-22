@@ -85,6 +85,13 @@ rules:
     - Bladestan\Rules\ViewCallSiteRule
 
 services:
+    -
+        class: Bladestan\Rules\TemplateCompilationErrorRule
+        arguments:
+            compiledViewPath: %bladestan.compiledViewPath%
+        tags:
+            - phpstan.rules.rule
+
     errorFormatter.blade:
         class: Bladestan\ErrorReporting\PHPStan\ErrorFormatter\BladeTemplateErrorFormatter
         arguments:

@@ -137,10 +137,12 @@ final class BladeToPHPCompiler
 
         $fileContents = @file_get_contents($resolvedTemplateFilePath);
         if ($fileContents === false) {
+            $this->errors[] = ["Cannot read file: {$resolvedTemplateFilePath}", 'bladestan.io'];
+
             return new PhpFileContentsWithLineMap(
-                "<?php\n",
+                "<?php\n" . $this->diagnosticHeader($resolvedTemplateFilePath),
                 [],
-                [["Cannot read file: {$resolvedTemplateFilePath}", 'bladestan.io']],
+                $this->errors,
             );
         }
 
@@ -174,13 +176,66 @@ final class BladeToPHPCompiler
         // Decorate with @var annotations from signature + shared variables
         $phpCode = $this->decoratePhpContentStandalone($phpCode, $templateSignature, $viewData, $componentScope);
 
-        // Add source tracking header after the <?php tag
-        $sourceHeader = "// @bladestan-source: {$resolvedTemplateFilePath}";
-        $phpCode = preg_replace('/^<\?php\n/', "<?php\n{$sourceHeader}\n", $phpCode) ?? $phpCode;
+        // Add source tracking header (and any compile-error markers) after the
+        // <?php tag. This runs before the line map is resolved below so the map
+        // accounts for the header lines.
+        $phpCode = preg_replace('/^<\?php\n/', "<?php\n" . $this->diagnosticHeader($resolvedTemplateFilePath), $phpCode)
+            ?? $phpCode;
 
         $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($phpCode);
 
         return new PhpFileContentsWithLineMap($phpCode, $phpLinesToTemplateLines, $this->errors);
+    }
+
+    /**
+     * Build the comment header prepended to every compiled file: the
+     * `@bladestan-source` back-reference plus one `@bladestan-error` marker per
+     * collected compile failure.
+     *
+     * The markers persist the errors that would otherwise be lost once the
+     * compiled PHP is written to disk. A parse failure compiles to an empty
+     * shell that PHPStan analyzes cleanly, so without a durable signal the
+     * template silently drops out of analysis. TemplateCompilationErrorRule
+     * reads these markers back and reports them against the .blade.php file.
+     * The payload is JSON so a multi-line message stays on one comment line.
+     */
+    private function diagnosticHeader(string $resolvedTemplateFilePath): string
+    {
+        $header = "// @bladestan-source: {$resolvedTemplateFilePath}\n";
+
+        foreach ($this->errors as [$message, $identifier]) {
+            $header .= $this->errorMarker($message, $identifier);
+        }
+
+        return $header;
+    }
+
+    /**
+     * A self-contained compiled shell for a template that threw during
+     * compilation, so it still carries a signal instead of dropping out of
+     * analysis. Valid PHP (comments only), matching the header format above.
+     */
+    public function errorStub(string $resolvedTemplateFilePath, string $message, string $identifier): string
+    {
+        return "<?php\n// @bladestan-source: {$resolvedTemplateFilePath}\n" . $this->errorMarker($message, $identifier);
+    }
+
+    /**
+     * One `@bladestan-error` comment marker. The payload is JSON so a multi-line
+     * message stays on a single comment line; TemplateCompilationErrorRule reads
+     * it back and reports it against the .blade.php file.
+     */
+    private function errorMarker(string $message, string $identifier): string
+    {
+        $payload = json_encode([
+            'message' => $message,
+            'identifier' => $identifier,
+        ], JSON_UNESCAPED_SLASHES);
+        if ($payload === false) {
+            return '';
+        }
+
+        return "// @bladestan-error: {$payload}\n";
     }
 
     /**
@@ -241,7 +296,7 @@ final class BladeToPHPCompiler
             $rawPhpContent = $this->printerStandard->prettyPrint($stmts) . "\n";
         } catch (ParserError) {
             $relativeFilePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
-            $this->errors[] = ["View [{$relativeFilePath}] contains syntx errors.", 'bladestan.parsing'];
+            $this->errors[] = ["View [{$relativeFilePath}] contains syntax errors.", 'bladestan.parsing'];
         } catch (InvalidArgumentException $invalidArgumentException) {
             $this->errors[] = [$invalidArgumentException->getMessage(), 'bladestan.missing'];
         }
