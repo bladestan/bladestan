@@ -28,6 +28,23 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringNotContainsString('@bladestan-signature', $compiled);
     }
 
+    public function testSignatureStripKeepsOriginalTemplateLineNumbers(): void
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/signed-template.blade.php';
+        $this->assertFileExists($filePath);
+
+        $lineMap = $this->bladeToPHPCompiler
+            ->compileStandalone(realpath($filePath) ?: $filePath, 'signed-template')
+            ->phpToTemplateLines;
+
+        // {{ $title }} sits on template line 9 and {{ $user->email }} on line 10,
+        // below a seven-line signature block. Stripping the block must not shift
+        // them up (it previously reported {{ $title }} as line 2).
+        $templateLines = array_merge(...array_map('array_values', $lineMap));
+        $this->assertContains(9, $templateLines);
+        $this->assertContains(10, $templateLines);
+    }
+
     public function testImplicitFirstDocblockSignatureIsUsedAndStripped(): void
     {
         $compiled = $this->compileView('implicit-signed-template');

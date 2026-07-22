@@ -143,19 +143,25 @@ final class SignatureExtractor
      * Strip the @bladestan-signature block from blade content so it doesn't
      * interfere with compilation. The @var tags will be re-emitted in the
      * compiled output based on the extracted signature.
+     *
+     * @param bool $preserveLineCount Replace the block with as many blank lines
+     *   as it spanned instead of deleting them, so line numbers in the rest of
+     *   the template are not shifted. The compiler needs this so reported error
+     *   lines match the original template; the generator does not (it rewrites
+     *   the file and wants the block gone).
      */
-    public function stripSignatureBlock(string $bladeContent): string
+    public function stripSignatureBlock(string $bladeContent, bool $preserveLineCount = false): string
     {
         // Try stripping @php ... @endphp block containing the signature, plus the
         // one trailing newline buildSignature() adds after @endphp, so re-running
         // the generator is idempotent instead of growing a blank line each time.
-        $stripped = preg_replace(self::STRIP_EXPLICIT_SIGNATURE_REGEX, '', $bladeContent, 1);
+        $stripped = $this->stripMatch(self::STRIP_EXPLICIT_SIGNATURE_REGEX, $bladeContent, $preserveLineCount);
         if ($stripped !== null && $stripped !== $bladeContent) {
             return $stripped;
         }
 
         // If no @php wrapper, strip just the docblock
-        $stripped = preg_replace(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, '', $bladeContent, 1);
+        $stripped = $this->stripMatch(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $bladeContent, $preserveLineCount);
         if ($stripped !== null && $stripped !== $bladeContent) {
             return $stripped;
         }
@@ -176,7 +182,7 @@ final class SignatureExtractor
      * strips when the docblock actually carries @var tags (i.e. it was used
      * as the template's signature); an unrelated leading docblock is kept.
      */
-    public function stripImplicitSignatureBlock(string $bladeContent): string
+    public function stripImplicitSignatureBlock(string $bladeContent, bool $preserveLineCount = false): string
     {
         if (preg_match(self::FIRST_PHP_DOCBLOCK_REGEX, $bladeContent, $matches) !== 1) {
             return $bladeContent;
@@ -186,7 +192,7 @@ final class SignatureExtractor
             return $bladeContent;
         }
 
-        return preg_replace(self::FIRST_PHP_DOCBLOCK_REGEX, '', $bladeContent, 1) ?? $bladeContent;
+        return $this->stripMatch(self::FIRST_PHP_DOCBLOCK_REGEX, $bladeContent, $preserveLineCount) ?? $bladeContent;
     }
 
     /**
@@ -195,9 +201,33 @@ final class SignatureExtractor
      * child's call sites via signature merging. Dynamic @extends($var) is
      * left alone (it compiles to a view() call that ViewCallSiteRule skips).
      */
-    public function stripExtends(string $bladeContent): string
+    public function stripExtends(string $bladeContent, bool $preserveLineCount = false): string
     {
-        return preg_replace(self::EXTENDS_REGEX, '', $bladeContent) ?? $bladeContent;
+        return $this->stripMatch(self::EXTENDS_REGEX, $bladeContent, $preserveLineCount, -1) ?? $bladeContent;
+    }
+
+    /**
+     * Remove every match of $pattern from the content. When $preserveLineCount
+     * is true, each match is replaced with as many newlines as it contained
+     * rather than deleted outright, so a stripped block leaves the following
+     * lines at their original line numbers.
+     */
+    private function stripMatch(
+        string $pattern,
+        string $bladeContent,
+        bool $preserveLineCount,
+        int $limit = 1,
+    ): ?string {
+        if (! $preserveLineCount) {
+            return preg_replace($pattern, '', $bladeContent, $limit);
+        }
+
+        return preg_replace_callback(
+            $pattern,
+            static fn (array $matches): string => str_repeat("\n", substr_count($matches[0], "\n")),
+            $bladeContent,
+            $limit,
+        );
     }
 
     /**

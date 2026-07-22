@@ -146,13 +146,16 @@ final class BladeToPHPCompiler
 
         // Extract signature and strip the signature docblock (explicit or
         // implicit) so it doesn't survive into the compiled output and
-        // duplicate the @var annotations we emit below.
+        // duplicate the @var annotations we emit below. Each strip preserves
+        // line count (the removed block becomes blank lines) so the following
+        // template lines keep their original numbers, which is what the
+        // line-comment pass below reports errors against.
         $templateSignature = $this->signatureExtractor->extract($fileContents);
-        $fileContents = $this->signatureExtractor->stripSignatureBlock($fileContents);
-        $fileContents = $this->signatureExtractor->stripImplicitSignatureBlock($fileContents);
+        $fileContents = $this->signatureExtractor->stripSignatureBlock($fileContents, preserveLineCount: true);
+        $fileContents = $this->signatureExtractor->stripImplicitSignatureBlock($fileContents, preserveLineCount: true);
 
         // Enforced parent requirements at the child's call sites via signature merging.
-        $fileContents = $this->signatureExtractor->stripExtends($fileContents);
+        $fileContents = $this->signatureExtractor->stripExtends($fileContents, preserveLineCount: true);
 
         // Variables Blade injects into a component body ($attributes, $slot,
         // $componentName, @props). Read before compilation, since compiling

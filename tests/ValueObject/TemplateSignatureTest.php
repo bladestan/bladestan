@@ -132,7 +132,9 @@ final class TemplateSignatureTest extends TestCase
         ]));
 
         // Original is unchanged
-        $this->assertSame(['name' => 'string'], $templateSignature->variables);
+        $this->assertSame([
+            'name' => 'string',
+        ], $templateSignature->variables);
         $this->assertSame(['name', 'age'], $withAdditional->getVariableNames());
         $this->assertSame(['name', 'email'], $merged->getVariableNames());
     }
