@@ -124,8 +124,7 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * Compile a blade template standalone — types come from @bladestan-signature
-     * instead of call-site arguments. Used by Phase 1 bootstrap compilation.
+     * Compile a blade template standalone.
      *
      * @param string $resolvedTemplateFilePath Absolute path to the .blade.php file
      * @param string $viewName Laravel view name (e.g. 'welcome', 'layouts.app')
@@ -152,8 +151,7 @@ final class BladeToPHPCompiler
         $fileContents = $this->signatureExtractor->stripSignatureBlock($fileContents);
         $fileContents = $this->signatureExtractor->stripImplicitSignatureBlock($fileContents);
 
-        // @extends is not a call site — the parent's requirements are enforced
-        // at the child's call sites via signature merging.
+        // Enforced parent requirements at the child's call sites via signature merging.
         $fileContents = $this->signatureExtractor->stripExtends($fileContents);
 
         // Variables Blade injects into a component body ($attributes, $slot,
@@ -164,10 +162,9 @@ final class BladeToPHPCompiler
         // Get view composer data
         $viewData = $this->getViewData($viewName);
 
-        // Compile blade → PHP without inlining. @include directives become
-        // view() calls that ViewCallSiteRule validates against the included
-        // template's own signature; each template is compiled exactly once.
-        $phpCode = "<?php\n\n" . $this->compileWithoutInlining($resolvedTemplateFilePath, $fileContents);
+        // Compile blade to PHP. @include directives become view() calls that
+        // ViewCallSiteRule validates against the included template's own signature.
+        $phpCode = "<?php\n\n" . $this->compile($resolvedTemplateFilePath, $fileContents);
         $phpCode = $this->resolveComponents($phpCode);
         $phpCode = $this->bubbleUpImports($phpCode);
 
@@ -216,10 +213,10 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * Compile a single blade template to PHP without inlining includes.
-     * Includes become view() call sites; no recursion into other templates.
+     * Compile a single blade template to PHP.
+     * Includes become view() call sites.
      */
-    private function compileWithoutInlining(string $filePath, string $fileContents): string
+    private function compile(string $filePath, string $fileContents): string
     {
         $fileContents = $this->fileNameAndLineNumberAddingPreCompiler
             ->completeLineCommentsToBladeContents($filePath, $fileContents);
