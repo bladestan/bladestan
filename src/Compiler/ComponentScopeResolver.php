@@ -59,10 +59,13 @@ final class ComponentScopeResolver
      */
     private const IGNORED_METHODS = ['render', 'resolveView', 'shouldRender', 'view', 'data', 'withName', 'withAttributes'];
 
+    private readonly BladeInertRegionMasker $bladeInertRegionMasker;
+
     public function __construct(
         private readonly BladeCompiler $bladeCompiler,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
     ) {
+        $this->bladeInertRegionMasker = new BladeInertRegionMasker();
     }
 
     /**
@@ -150,6 +153,10 @@ final class ComponentScopeResolver
      */
     private function extractProps(string $bladeContent): ?array
     {
+        // A @props inside a comment or @verbatim block is inert to Blade, so
+        // mask those regions before scanning for the real declaration.
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+
         if (preg_match(self::PROPS_REGEX, $bladeContent, $matches) !== 1) {
             return null;
         }

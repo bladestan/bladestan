@@ -85,11 +85,14 @@ final class SignatureExtractor
 
     private readonly Printer $phpDocPrinter;
 
+    private readonly BladeInertRegionMasker $bladeInertRegionMasker;
+
     /**
      * The parser chain is built here rather than injected because this class
      * runs in three hosts: PHPStan's DI container, the plain bootstrap file,
      * and the Laravel container behind the artisan command. Constructing the
-     * stateless parser locally keeps one canonical setup instead of three.
+     * stateless parser (and the equally stateless inert-region masker) locally
+     * keeps one canonical setup instead of three.
      */
     public function __construct()
     {
@@ -102,6 +105,7 @@ final class SignatureExtractor
             $constExprParser,
         );
         $this->phpDocPrinter = new Printer();
+        $this->bladeInertRegionMasker = new BladeInertRegionMasker();
     }
 
     /**
@@ -109,6 +113,10 @@ final class SignatureExtractor
      */
     public function extract(string $bladeContent): TemplateSignature
     {
+        // Scan the masked content so a signature docblock inside a comment or
+        // @verbatim block is invisible, exactly as it is to Blade.
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+
         // Priority 1: Explicit @bladestan-signature
         $explicit = $this->extractExplicitSignature($bladeContent);
         if ($explicit instanceof TemplateSignature) {
@@ -132,6 +140,10 @@ final class SignatureExtractor
      */
     public function findExtends(string $bladeContent): ?string
     {
+        // A commented-out or @verbatim @extends is inert to Blade, so mask
+        // those regions before looking for the directive that drives merging.
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+
         if (preg_match(self::EXTENDS_REGEX, $bladeContent, $matches) !== 1) {
             return null;
         }
@@ -156,13 +168,13 @@ final class SignatureExtractor
         // one trailing newline buildSignature() adds after @endphp, so re-running
         // the generator is idempotent instead of growing a blank line each time.
         $stripped = $this->stripMatch(self::STRIP_EXPLICIT_SIGNATURE_REGEX, $bladeContent, $preserveLineCount);
-        if ($stripped !== null && $stripped !== $bladeContent) {
+        if ($stripped !== $bladeContent) {
             return $stripped;
         }
 
         // If no @php wrapper, strip just the docblock
         $stripped = $this->stripMatch(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $bladeContent, $preserveLineCount);
-        if ($stripped !== null && $stripped !== $bladeContent) {
+        if ($stripped !== $bladeContent) {
             return $stripped;
         }
 
@@ -174,6 +186,8 @@ final class SignatureExtractor
      */
     public function hasExplicitSignature(string $bladeContent): bool
     {
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+
         return preg_match(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $bladeContent) === 1;
     }
 
@@ -184,7 +198,7 @@ final class SignatureExtractor
      */
     public function stripImplicitSignatureBlock(string $bladeContent, bool $preserveLineCount = false): string
     {
-        if (preg_match(self::FIRST_PHP_DOCBLOCK_REGEX, $bladeContent, $matches) !== 1) {
+        if (preg_match(self::FIRST_PHP_DOCBLOCK_REGEX, $this->bladeInertRegionMasker->mask($bladeContent), $matches) !== 1) {
             return $bladeContent;
         }
 
@@ -192,7 +206,7 @@ final class SignatureExtractor
             return $bladeContent;
         }
 
-        return $this->stripMatch(self::FIRST_PHP_DOCBLOCK_REGEX, $bladeContent, $preserveLineCount) ?? $bladeContent;
+        return $this->stripMatch(self::FIRST_PHP_DOCBLOCK_REGEX, $bladeContent, $preserveLineCount);
     }
 
     /**
@@ -203,31 +217,47 @@ final class SignatureExtractor
      */
     public function stripExtends(string $bladeContent, bool $preserveLineCount = false): string
     {
-        return $this->stripMatch(self::EXTENDS_REGEX, $bladeContent, $preserveLineCount, -1) ?? $bladeContent;
+        return $this->stripMatch(self::EXTENDS_REGEX, $bladeContent, $preserveLineCount, -1);
     }
 
     /**
-     * Remove every match of $pattern from the content. When $preserveLineCount
-     * is true, each match is replaced with as many newlines as it contained
-     * rather than deleted outright, so a stripped block leaves the following
-     * lines at their original line numbers.
+     * Remove every match of $pattern from the content, ignoring matches that
+     * fall inside a comment or @verbatim block. When $preserveLineCount is true,
+     * each match is replaced with as many newlines as it contained rather than
+     * deleted outright, so a stripped block leaves the following lines at their
+     * original line numbers.
+     *
+     * Matching runs against the masked content so inert regions are skipped,
+     * but the mask preserves byte offsets, so the matched ranges are spliced
+     * out of the original content by offset. Splices are applied from the end
+     * of the string forward, keeping earlier offsets valid as bytes are removed.
+     *
+     * @param int $limit Maximum number of matches to strip, or -1 for all.
      */
     private function stripMatch(
         string $pattern,
         string $bladeContent,
         bool $preserveLineCount,
         int $limit = 1,
-    ): ?string {
-        if (! $preserveLineCount) {
-            return preg_replace($pattern, '', $bladeContent, $limit);
+    ): string {
+        $masked = $this->bladeInertRegionMasker->mask($bladeContent);
+
+        if (preg_match_all($pattern, $masked, $matches, PREG_OFFSET_CAPTURE | PREG_SET_ORDER) < 1) {
+            return $bladeContent;
         }
 
-        return preg_replace_callback(
-            $pattern,
-            static fn (array $matches): string => str_repeat("\n", substr_count($matches[0], "\n")),
-            $bladeContent,
-            $limit,
-        );
+        /** @var list<array{string, int}> $wholeMatches */
+        $wholeMatches = array_column($matches, 0);
+        if ($limit >= 0) {
+            $wholeMatches = array_slice($wholeMatches, 0, $limit);
+        }
+
+        foreach (array_reverse($wholeMatches) as [$matchText, $offset]) {
+            $replacement = $preserveLineCount ? str_repeat("\n", substr_count($matchText, "\n")) : '';
+            $bladeContent = substr_replace($bladeContent, $replacement, $offset, strlen($matchText));
+        }
+
+        return $bladeContent;
     }
 
     /**
@@ -239,6 +269,10 @@ final class SignatureExtractor
      */
     public function extractSignatureRelevantContent(string $bladeContent): string
     {
+        // Scan the masked content: an inert signature/@extends/@props must not
+        // feed the cache hash, or a purely-commented edit would invalidate it.
+        $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
+
         $slices = [];
 
         if (preg_match(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $bladeContent, $matches) === 1) {

@@ -267,6 +267,111 @@ final class SignatureExtractorTest extends TestCase
         $this->assertNull($parent);
     }
 
+    public function testExplicitSignatureInsideCommentIsIgnored(): void
+    {
+        $bladeContent = <<<'BLADE'
+            {{--
+            @php
+            /**
+             * @bladestan-signature
+             * @var string $name
+             */
+            @endphp
+            --}}
+
+            <h1>Hello</h1>
+            BLADE;
+
+        $templateSignature = $this->signatureExtractor->extract($bladeContent);
+
+        // A signature parked inside a comment is inert to Blade, so it is not
+        // the template's contract.
+        $this->assertTrue($templateSignature->isEmpty());
+        $this->assertFalse($this->signatureExtractor->hasExplicitSignature($bladeContent));
+    }
+
+    public function testExplicitSignatureInsideVerbatimIsIgnored(): void
+    {
+        $bladeContent = <<<'BLADE'
+            @verbatim
+            @php
+            /**
+             * @bladestan-signature
+             * @var string $name
+             */
+            @endphp
+            @endverbatim
+
+            <h1>Hello</h1>
+            BLADE;
+
+        $templateSignature = $this->signatureExtractor->extract($bladeContent);
+
+        $this->assertTrue($templateSignature->isEmpty());
+    }
+
+    public function testRealSignatureWinsOverACommentedOne(): void
+    {
+        $bladeContent = <<<'BLADE'
+            {{--
+            @php
+            /**
+             * @bladestan-signature
+             * @var int $stale
+             */
+            @endphp
+            --}}
+            @php
+            /**
+             * @bladestan-signature
+             * @var string $name
+             */
+            @endphp
+
+            <h1>{{ $name }}</h1>
+            BLADE;
+
+        $templateSignature = $this->signatureExtractor->extract($bladeContent);
+
+        $this->assertSame([
+            'name' => 'string',
+        ], $templateSignature->variables);
+    }
+
+    public function testFindExtendsIgnoresCommentedDirective(): void
+    {
+        $bladeContent = "{{-- @extends('old-layout') --}}\n<h1>Hello</h1>";
+
+        $this->assertNull($this->signatureExtractor->findExtends($bladeContent));
+    }
+
+    public function testFindExtendsSkipsCommentedDirectiveAndFindsTheRealOne(): void
+    {
+        $bladeContent = "{{-- @extends('old-layout') --}}\n@extends('layouts.app')";
+
+        $this->assertSame('layouts.app', $this->signatureExtractor->findExtends($bladeContent));
+    }
+
+    public function testStripSignatureBlockLeavesCommentedSignatureIntact(): void
+    {
+        $bladeContent = "{{--\n@php\n/**\n * @bladestan-signature\n * @var string \$name\n */\n@endphp\n--}}\n<h1>Hello</h1>";
+
+        // The block is inert, so stripping (which only removes a real signature)
+        // must leave it exactly where Blade will discard it as a comment.
+        $this->assertSame($bladeContent, $this->signatureExtractor->stripSignatureBlock($bladeContent));
+    }
+
+    public function testExtractSignatureRelevantContentIgnoresCommentedDirectives(): void
+    {
+        $bladeContent = "{{-- @extends('old') @props(['x']) --}}\n@extends('layouts.app')";
+
+        $relevant = $this->signatureExtractor->extractSignatureRelevantContent($bladeContent);
+
+        $this->assertStringContainsString("@extends('layouts.app')", $relevant);
+        $this->assertStringNotContainsString('old', $relevant);
+        $this->assertStringNotContainsString('@props', $relevant);
+    }
+
     public function testImplicitSignatureIgnoresDocblocksAfterContent(): void
     {
         $bladeContent = <<<'BLADE'

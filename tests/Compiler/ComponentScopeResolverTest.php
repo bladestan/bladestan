@@ -65,6 +65,32 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         $this->assertNull($this->componentScopeResolver->propsSignature('<div>{{ $slot }}</div>'));
     }
 
+    public function testPropsInsideACommentAreIgnored(): void
+    {
+        // Blade discards the comment, so the commented @props declares nothing.
+        $this->assertNull(
+            $this->componentScopeResolver->propsSignature("{{-- @props(['type' => 'info']) --}}\n<div>{{ \$slot }}</div>"),
+        );
+    }
+
+    public function testPropsInsideVerbatimAreIgnored(): void
+    {
+        $this->assertNull(
+            $this->componentScopeResolver->propsSignature("@verbatim\n@props(['type' => 'info'])\n@endverbatim"),
+        );
+    }
+
+    public function testRealPropsWinOverACommentedDeclaration(): void
+    {
+        $signature = $this->componentScopeResolver->propsSignature(
+            "{{-- @props(['stale' => 1]) --}}\n@props(['type' => 'info'])",
+        );
+
+        $this->assertSame([
+            'type' => 'string',
+        ], $signature);
+    }
+
     public function testComponentViewWithoutPropsGetsAttributesSlotAndName(): void
     {
         $scope = $this->componentScopeResolver->resolve('components.card', '<div>{{ $slot }}</div>');
