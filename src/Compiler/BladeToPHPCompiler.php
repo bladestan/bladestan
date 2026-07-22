@@ -44,7 +44,7 @@ final class BladeToPHPCompiler
      * output layout changes, so a stale tree from an older scheme is wiped
      * instead of leaving orphans the per-view prune cannot reach.
      */
-    private const COMPILED_OUTPUT_VERSION = 5;
+    private const COMPILED_OUTPUT_VERSION = 1;
 
     /**
      * @see https://regex101.com/r/B3BbxW/1
@@ -57,14 +57,6 @@ final class BladeToPHPCompiler
      * @var string
      */
     private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
-
-    /**
-     * Matches every import form PHP allows after `use`: plain, `function`, `const`, and an alias.
-     * The excluded characters keep the match away from prose: a quote, parenthesis or semicolon
-     * ends it, so neither a closure's `use ($var)` clause nor the word "use" inside a string
-     * literal is mistaken for an import.
-     */
-    private const IMPORT_REGEX = '/(?<=^|\s)use +(?:function +|const +)?[^ \')(;]+(?: +as +\w+)?;/';
 
     /**
      * @var list<array{0: string, 1: string}>
@@ -193,7 +185,6 @@ final class BladeToPHPCompiler
         // ViewCallSiteRule validates against the included template's own signature.
         $phpCode = "<?php\n\n" . $this->compile($resolvedTemplateFilePath, $fileContents);
         $phpCode = $this->resolveComponents($phpCode);
-        $phpCode = $this->bubbleUpImports($phpCode);
 
         // Decorate with @var annotations from signature + shared variables
         $phpCode = $this->decoratePhpContentStandalone($phpCode, $templateSignature, $viewData, $componentScope);
@@ -324,17 +315,6 @@ final class BladeToPHPCompiler
         }
 
         return $this->livewireTagCompiler->replace($rawPhpContent);
-    }
-
-    private function bubbleUpImports(string $rawPhpContent): string
-    {
-        preg_match_all(self::IMPORT_REGEX, $rawPhpContent, $imports);
-        foreach ($imports[0] as $import) {
-            $rawPhpContent = str_replace($import, '', $rawPhpContent);
-        }
-
-        $import = implode("\n", array_unique($imports[0]));
-        return str_replace("<?php\n", "<?php\n{$import}", $rawPhpContent);
     }
 
     private function resolveComponents(string $rawPhpContent): string

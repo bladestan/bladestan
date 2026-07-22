@@ -30,6 +30,11 @@ recompiled and re-analysed at every `view()` call. See
 - `.bladestan` (the compiled template directory) must now be included in
   PHPStan's analysed `paths`.
 
+### Fixed
+
+- A string literal in a template whose text resembles a `use` statement is no
+  longer corrupted during compilation.
+
 ## [0.11.7] - 2026-07-18
 
 ### Fixed

@@ -119,6 +119,18 @@ final class CompileStandaloneTest extends PHPStanTestCase
         );
     }
 
+    public function testUseStatementsStayInPlaceAndStringLiteralsSurvive(): void
+    {
+        $compiled = $this->compileView('partials.has_use');
+
+        // A use statement from a @php block is kept as-is; each template is a
+        // standalone file, so nothing needs to be hoisted out of it.
+        $this->assertStringContainsString('use My\Name\Space;', $compiled);
+        // A string literal that merely looks like a use statement is not
+        // mistaken for one (the old regex-based hoisting corrupted it).
+        $this->assertStringContainsString("echo e('Please use App\\Foo; thanks');", $compiled);
+    }
+
     public function testExtendsIsStrippedNotCompiledAsCallSite(): void
     {
         $compiled = $this->compileView('extends-template');
