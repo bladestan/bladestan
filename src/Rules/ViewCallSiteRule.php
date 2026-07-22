@@ -91,14 +91,11 @@ final class ViewCallSiteRule implements Rule
 
         $errors = [];
 
-        // Report merge errors (covariance violations)
-        foreach ($mergedSignature->errors as $mergeError) {
-            $errors[] = RuleErrorBuilder::message($mergeError)
-                ->identifier('bladestan.signatureMerge')
-                ->build();
-        }
+        // Covariance violations and unresolvable @extends parents are defects of
+        // the template itself, not of this call site, so TemplateSignatureMergeRule
+        // reports them once against the template rather than at every call site.
 
-        // If the merged signature is empty (all merge errors?), skip call-site validation
+        // If the merged signature is empty, there is nothing to validate against.
         if ($templateSignature->isEmpty()) {
             return $errors;
         }

@@ -92,6 +92,13 @@ services:
         tags:
             - phpstan.rules.rule
 
+    -
+        class: Bladestan\Rules\TemplateSignatureMergeRule
+        arguments:
+            compiledViewPath: %bladestan.compiledViewPath%
+        tags:
+            - phpstan.rules.rule
+
     errorFormatter.blade:
         class: Bladestan\ErrorReporting\PHPStan\ErrorFormatter\BladeTemplateErrorFormatter
         arguments:

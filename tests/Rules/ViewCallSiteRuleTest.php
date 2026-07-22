@@ -72,11 +72,11 @@ final class ViewCallSiteRuleTest extends RuleTestCase
             ['Template signed-template requires parameter $user of type \App\Models\User, but it was not provided.', 45],
         ]];
 
-        // A template extending a nonexistent layout is reported: its merged
-        // contract is incomplete, so silence would hide unchecked variables.
-        yield [__DIR__ . '/Fixture/view-call-site-extends-missing-layout.php', [
-            ['Template extends-missing-layout.blade.php extends layouts.does-not-exist, which does not exist.', 11],
-        ]];
+        // A template extending a nonexistent layout does not break call-site
+        // validation: the child's own $title is satisfied here, and the broken
+        // @extends is reported once against the template by
+        // TemplateSignatureMergeRule, not at every call site.
+        yield [__DIR__ . '/Fixture/view-call-site-extends-missing-layout.php', []];
 
         // A child with no signature of its own still inherits its layout's
         // contract: the call site provides $title but not the layout-required
