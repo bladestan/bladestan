@@ -372,6 +372,18 @@ final class SignatureExtractorTest extends TestCase
         $this->assertStringNotContainsString('@props', $relevant);
     }
 
+    public function testExtractSignatureRelevantContentKeepsWholePropsWithACallDefault(): void
+    {
+        // The default value foo(1) contains a ")"; the whole @props must reach
+        // the cache-relevant slice, or an edit to anything after that paren
+        // (here 'b' => 2) would not invalidate the result cache.
+        $bladeContent = "@props(['a' => foo(1), 'b' => 2])\n<div>{{ \$slot }}</div>";
+
+        $relevant = $this->signatureExtractor->extractSignatureRelevantContent($bladeContent);
+
+        $this->assertStringContainsString("@props(['a' => foo(1), 'b' => 2])", $relevant);
+    }
+
     public function testImplicitSignatureIgnoresDocblocksAfterContent(): void
     {
         $bladeContent = <<<'BLADE'

@@ -45,12 +45,6 @@ use Throwable;
 final class ComponentScopeResolver
 {
     /**
-     * @see https://regex101.com/r/O0eirb/1
-     * @var string
-     */
-    private const PROPS_REGEX = '/@props\s*\(\s*(\[.*?\])\s*\)/s';
-
-    /**
      * Component methods Blade never exposes as view variables. Framework methods
      * declared on Component itself are excluded by their declaring class; these
      * are the ones a component commonly overrides, so they need naming.
@@ -61,11 +55,14 @@ final class ComponentScopeResolver
 
     private readonly BladeInertRegionMasker $bladeInertRegionMasker;
 
+    private readonly PropsDirectiveExtractor $propsDirectiveExtractor;
+
     public function __construct(
         private readonly BladeCompiler $bladeCompiler,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
     ) {
         $this->bladeInertRegionMasker = new BladeInertRegionMasker();
+        $this->propsDirectiveExtractor = new PropsDirectiveExtractor();
     }
 
     /**
@@ -157,11 +154,12 @@ final class ComponentScopeResolver
         // mask those regions before scanning for the real declaration.
         $bladeContent = $this->bladeInertRegionMasker->mask($bladeContent);
 
-        if (preg_match(self::PROPS_REGEX, $bladeContent, $matches) !== 1) {
+        $arrayLiteral = $this->propsDirectiveExtractor->extractArrayLiteral($bladeContent);
+        if ($arrayLiteral === null) {
             return null;
         }
 
-        $converted = $this->arrayStringToArrayConverter->convert($matches[1]);
+        $converted = $this->arrayStringToArrayConverter->convert($arrayLiteral);
 
         $props = [];
         foreach ($converted as $key => $value) {

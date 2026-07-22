@@ -74,11 +74,6 @@ final class SignatureExtractor
      */
     private const EXTENDS_REGEX = '/@extends\s*\(\s*[\'"]([^\'"]+)[\'"]\s*\)/';
 
-    /**
-     * Matches @props([...]) directives (single-line form).
-     */
-    private const PROPS_REGEX = '/@props\s*\(.*?\)/s';
-
     private readonly Lexer $phpDocLexer;
 
     private readonly PhpDocParser $phpDocParser;
@@ -86,6 +81,8 @@ final class SignatureExtractor
     private readonly Printer $phpDocPrinter;
 
     private readonly BladeInertRegionMasker $bladeInertRegionMasker;
+
+    private readonly PropsDirectiveExtractor $propsDirectiveExtractor;
 
     /**
      * The parser chain is built here rather than injected because this class
@@ -106,6 +103,7 @@ final class SignatureExtractor
         );
         $this->phpDocPrinter = new Printer();
         $this->bladeInertRegionMasker = new BladeInertRegionMasker();
+        $this->propsDirectiveExtractor = new PropsDirectiveExtractor();
     }
 
     /**
@@ -285,9 +283,7 @@ final class SignatureExtractor
             $slices = array_merge($slices, $matches[0]);
         }
 
-        if (preg_match_all(self::PROPS_REGEX, $bladeContent, $matches) > 0) {
-            $slices = array_merge($slices, $matches[0]);
-        }
+        $slices = array_merge($slices, $this->propsDirectiveExtractor->all($bladeContent));
 
         return implode("\n", $slices);
     }

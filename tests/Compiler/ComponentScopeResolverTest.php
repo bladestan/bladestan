@@ -60,6 +60,25 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         );
     }
 
+    public function testPropsSignatureSpansACallDefaultAndNestedArray(): void
+    {
+        // The foo(1) default contains a ")" and 'nested' is an array literal;
+        // every prop after them must still be read, not lost to a scan that
+        // stops at the first ")" or "]".
+        $signature = $this->componentScopeResolver->propsSignature(
+            "@props(['a' => foo(1), 'nested' => ['x' => 1], 'label' => 'hi'])\n<div>{{ \$slot }}</div>",
+        );
+
+        $this->assertSame(
+            [
+                'a' => 'mixed',
+                'nested' => 'array',
+                'label' => 'string',
+            ],
+            $signature,
+        );
+    }
+
     public function testPropsSignatureIsNullWithoutPropsDirective(): void
     {
         $this->assertNull($this->componentScopeResolver->propsSignature('<div>{{ $slot }}</div>'));
