@@ -34,6 +34,17 @@ if (! defined('LARAVEL_START')) {
 // directory is among the analysed paths (the user added `.bladestan` to their
 // `paths`). Without it, call-site signature validation still works and no
 // compilation time is spent.
+// PHPStan runs bootstrap files in every process. Derive the command and
+// worker flags once, up front, from argv (which is available before the app
+// boots): the loud dependency warning below needs them, and so do the later
+// advisories and the compile guard. WorkerCommand and FixerWorkerCommand both
+// go through CommandHelper::begin(), so only the main process reports or
+// compiles; recompiling from a worker would race sibling workers analyzing the
+// compiled files.
+$bladestanArgv = $_SERVER['argv'] ?? [];
+$bladestanIsWorkerProcess = in_array($bladestanArgv[1] ?? '', ['worker', 'fixer:worker'], true);
+$bladestanIsAnalyseCommand = in_array($bladestanArgv[1] ?? '', ['analyse', 'analyze'], true);
+
 $bladestanCompiledViewPath = getcwd() . '/.bladestan';
 $bladestanShouldCompile = false;
 $bladestanExtensionLoaded = false;
@@ -53,18 +64,47 @@ if (isset($container) && $container instanceof PHPStan\DependencyInjection\Conta
         // either way the user chose their output, so the blade-remap advisory
         // below stays quiet.
         $bladestanErrorFormatConfigured = $container->getParameter('errorFormat') !== null;
+    } catch (Throwable) {
+        // The `bladestan` parameter is absent, so the extension's config was
+        // never loaded (e.g. a minimal test config that pulls in this bootstrap
+        // without extension.neon). There is nothing to compile, so stay quiet.
+    }
 
-        /** @var list<string> $bladestanAnalysedPaths */
-        $bladestanAnalysedPaths = $container->getParameter('analysedPaths');
-        $bladestanNormalizedTarget = rtrim(str_replace('\\', '/', $bladestanCompiledViewPath), '/');
-        foreach ($bladestanAnalysedPaths as $bladestanAnalysedPath) {
-            if (rtrim(str_replace('\\', '/', $bladestanAnalysedPath), '/') === $bladestanNormalizedTarget) {
-                $bladestanShouldCompile = true;
-                break;
+    // `analysedPaths` is an internal PHPStan container parameter
+    // (parametersSchema.neon marks it "internal parameters only for
+    // DerivativeContainerFactory") with no supported public alternative today.
+    // We read it to decide whether `.bladestan` is among the analysed paths and
+    // therefore whether to compile. If a PHPStan upgrade renames or removes it,
+    // this read throws — and because a missing compile step just means no
+    // template files to analyse, PHPStan would report a clean "no errors found"
+    // that hides the broken dependency. Fail loudly instead, but only once the
+    // extension is actually loaded (so minimal test configs stay silent).
+    if ($bladestanExtensionLoaded) {
+        try {
+            /** @var list<string> $bladestanAnalysedPaths */
+            $bladestanAnalysedPaths = $container->getParameter('analysedPaths');
+            $bladestanNormalizedTarget = rtrim(str_replace('\\', '/', $bladestanCompiledViewPath), '/');
+            foreach ($bladestanAnalysedPaths as $bladestanAnalysedPath) {
+                if (rtrim(str_replace('\\', '/', $bladestanAnalysedPath), '/') === $bladestanNormalizedTarget) {
+                    $bladestanShouldCompile = true;
+                    break;
+                }
+            }
+        } catch (Throwable) {
+            // Only the main analyse process warns: workers run the `worker`
+            // command (not `analyse`), and repeating this from each of them
+            // would bury the message. Other commands that load this bootstrap
+            // (clear-result-cache, diagnose) do not compile, so the warning
+            // would be noise there.
+            if ($bladestanIsAnalyseCommand) {
+                fwrite(
+                    STDERR,
+                    'Warning: Bladestan could not read PHPStan\'s internal "analysedPaths" parameter, which it relies on to decide whether to compile your Blade templates. '
+                    . 'This usually means a PHPStan upgrade changed or removed it. Your template bodies will NOT be analysed, so any errors inside them are silently missing (view() call sites are still checked). '
+                    . "Please report this at https://github.com/luxplus/bladestan/issues so the extension can be updated.\n",
+                );
             }
         }
-    } catch (Throwable) {
-        // Parameter not defined (e.g. minimal test config) — skip compilation.
     }
 }
 
@@ -130,22 +170,11 @@ if (isset($app)) {
         define('LARAVEL_VERSION', $app->version());
     }
 
-    // PHPStan executes bootstrap files in EVERY process — including each
-    // parallel worker (WorkerCommand and FixerWorkerCommand both go through
-    // CommandHelper::begin()). Only the main process may compile: it finishes
-    // before workers spawn, and recompiling from a worker would race against
-    // sibling workers analyzing the compiled files.
-    $bladestanArgv = $_SERVER['argv'] ?? [];
-    $bladestanIsWorkerProcess = in_array($bladestanArgv[1] ?? '', ['worker', 'fixer:worker'], true);
-
+    // Only the main process may compile: it finishes before workers spawn
+    // (see the worker note at the top), and recompiling from a worker would
+    // race against sibling workers analyzing the compiled files.
     if (! $bladestanIsWorkerProcess) {
         $bladestanTemplateDiscovery = new TemplateDiscovery();
-
-        // The advisories below only make sense for a real analysis run. Other
-        // commands (clear-result-cache, diagnose) and other hosts of the PHPStan
-        // container (PHPStan's own test cases) load this bootstrap too, and a
-        // configuration warning there is pure noise.
-        $bladestanIsAnalyseCommand = in_array($bladestanArgv[1] ?? '', ['analyse', 'analyze'], true);
 
         // Advisory: raw `.blade.php` files must never be analysed directly.
         // Bladestan analyses templates from its compiled output under
