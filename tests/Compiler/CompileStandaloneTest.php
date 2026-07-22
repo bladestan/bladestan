@@ -105,6 +105,20 @@ final class CompileStandaloneTest extends PHPStanTestCase
         );
     }
 
+    public function testIncludeWithExplicitFilteredDataKeepsItAsExplicitData(): void
+    {
+        $compiled = $this->compileView('include_with_filtered_data');
+
+        // The explicit second argument is `array_diff_key($all, $except)`, whose
+        // shape matches the compiler-injected scope-forwarding call. It must not
+        // be mistaken for forwarding and dropped: it names its own operands and
+        // is validated as-is, kept alongside the separate forwarded scope.
+        $this->assertStringContainsString(
+            "view('included_view', array_diff_key(\$all, \$except), get_defined_vars());",
+            $compiled
+        );
+    }
+
     public function testExtendsIsStrippedNotCompiledAsCallSite(): void
     {
         $compiled = $this->compileView('extends-template');

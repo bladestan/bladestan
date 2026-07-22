@@ -146,19 +146,43 @@ final class TransformIncludesToViewCalls extends NodeVisitorAbstract
     /**
      * Blade forwards the parent scope via `array_diff_key(get_defined_vars(), ...)`
      * (includes) or `\Illuminate\Support\Arr::except(get_defined_vars(), ...)` (extends).
+     *
+     * Both compiler-injected forms pass the surrounding scope as their first
+     * argument (`get_defined_vars()`). Requiring that guards against explicit
+     * user data whose runtime effect merely resembles forwarding, such as
+     * `@include('x', array_diff_key($a, $b))` or `@include('x', Arr::except($a, $b))`,
+     * which name their own operands and must be validated as-is.
      */
     private function isScopeForwardingArg(Expr $expr): bool
     {
         if ($expr instanceof FuncCall && $expr->name instanceof Name) {
-            return $expr->name->toLowerString() === 'array_diff_key';
+            return $expr->name->toLowerString() === 'array_diff_key'
+                && $this->forwardsDefinedVars($expr);
         }
 
         if ($expr instanceof StaticCall && $expr->class instanceof FullyQualified) {
             return $expr->class->toString() === Arr::class
                 && $expr->name instanceof Identifier
-                && $expr->name->name === 'except';
+                && $expr->name->name === 'except'
+                && $this->forwardsDefinedVars($expr);
         }
 
         return false;
+    }
+
+    /**
+     * True when the call's first argument is a bare `get_defined_vars()`, the
+     * shape the Blade compiler emits when forwarding the surrounding scope.
+     */
+    private function forwardsDefinedVars(FuncCall|StaticCall $call): bool
+    {
+        $first = $call->args[0] ?? null;
+        if (! $first instanceof Arg) {
+            return false;
+        }
+
+        return $first->value instanceof FuncCall
+            && $first->value->name instanceof Name
+            && $first->value->name->toLowerString() === 'get_defined_vars';
     }
 }
