@@ -73,6 +73,14 @@ final class BladeToPHPCompiler
     private const SIGNATURE_DOCBLOCK_REGEX = '/(@php\s*\n\s*\/\*\*(?:(?!\*\/)[\s\S])*?@bladestan-signature\b[\s\S]*?\*\/\s*\n\s*@endphp)/';
 
     /**
+     * Matches every import form PHP allows after `use`: plain, `function`, `const`, and an alias.
+     * The excluded characters keep the match away from prose: a quote, parenthesis or semicolon
+     * ends it, so neither a closure's `use ($var)` clause nor the word "use" inside a string
+     * literal is mistaken for an import.
+     */
+    private const IMPORT_REGEX = '/(?<=^|\s)use +(?:function +|const +)?[^ \')(;]+(?: +as +\w+)?;/';
+
+    /**
      * @var list<array{0: string, 1: string}>
      */
     private array $errors;
@@ -276,7 +284,7 @@ final class BladeToPHPCompiler
 
     private function bubbleUpImports(string $rawPhpContent): string
     {
-        preg_match_all('/(?<=^|\s)use +[^ \')(]+;/', $rawPhpContent, $imports);
+        preg_match_all(self::IMPORT_REGEX, $rawPhpContent, $imports);
         foreach ($imports[0] as $import) {
             $rawPhpContent = str_replace($import, '', $rawPhpContent);
         }
