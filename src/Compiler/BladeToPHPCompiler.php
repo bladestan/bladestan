@@ -57,7 +57,7 @@ final class BladeToPHPCompiler
      * @see https://regex101.com/r/B3BbxW/1
      * @var string
      */
-    private const BACKED_COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\((\[(?:.*?)?\]) .+?\$component->withAttributes\(\[.*?\]\);/s';
+    private const BACKED_COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\((\[(?:.*?)?\]) \+ \(isset\(\$attributes\).+?\$component->withAttributes\(\[.*?\]\);/s';
 
     /**
      * @see https://regex101.com/r/mt3PUM/1
