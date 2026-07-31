@@ -11,6 +11,7 @@ class BackedComponent extends Component
 
     public function __construct(
         private readonly string $b,
+        private readonly string $panelClass = '',
     ) {
     }
 
@@ -20,6 +21,7 @@ class BackedComponent extends Component
             'a' => 'a',
             'b' => $this->b,
             'c' => $this->c,
+            'panelClass' => $this->panelClass,
         ]);
     }
 }
