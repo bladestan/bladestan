@@ -291,7 +291,7 @@ final class BladeToPHPCompiler
         foreach ($components as $component) {
             $class = $component[1];
             $arrayString = trim($component[2], ' ,');
-            $attributes = $this->arrayStringToArrayConverter->convert($arrayString);
+            $attributes = $this->convertComponentData($arrayString, $class);
 
             // Resolve any additional required arguments
             if (class_exists($class) && method_exists($class, '__construct')) {
@@ -336,6 +336,26 @@ final class BladeToPHPCompiler
             '',
             $rawPhpContent
         ) ?? throw new ShouldNotHappenException('preg_replace error');
+    }
+
+    /**
+     * A component's data array is located with a regular expression, so an unusual attribute value
+     * can still end the capture in the wrong place. Report that against the template and carry on
+     * with no data for this one component, rather than letting the parse error escape and abort the
+     * whole run without naming a file.
+     *
+     * @return array<string>
+     */
+    private function convertComponentData(string $arrayString, string $component): array
+    {
+        try {
+            /** @throws ParserError */
+            return $this->arrayStringToArrayConverter->convert($arrayString);
+        } catch (ParserError) {
+            $this->errors[] = ["Unable to read the data passed to component [{$component}].", 'bladestan.parsing'];
+
+            return [];
+        }
     }
 
     /**
@@ -416,7 +436,7 @@ final class BladeToPHPCompiler
             }
 
             $includeVariables = $matches[2] ?? '[]';
-            $includeVariables = $this->arrayStringToArrayConverter->convert($includeVariables);
+            $includeVariables = $this->convertComponentData($includeVariables, $view);
             // Filter out attributes
             $includeVariables = array_filter($includeVariables, function (string|int $key): bool {
                 return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
