@@ -1,0 +1,1 @@
+@livewire($dynamicName, ['b' => $b])

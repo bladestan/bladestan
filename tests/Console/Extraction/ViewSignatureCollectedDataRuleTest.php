@@ -97,7 +97,7 @@ final class ViewSignatureCollectedDataRuleTest extends RuleTestCase
 
         $this->assertArrayHasKey('components.component', $signatures);
         self::assertSame(
-            ['a', 'b', 'c'],
+            ['a', 'b', 'c', 'panelClass'],
             array_keys($signatures['components.component']['variables']),
         );
     }

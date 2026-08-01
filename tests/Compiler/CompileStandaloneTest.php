@@ -4,6 +4,8 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests\Compiler;
 
+use App\Livewire\WiredComponent;
+use App\View\Components\BackedComponent;
 use Bladestan\Compiler\BladeToPHPCompiler;
 use PHPStan\Testing\PHPStanTestCase;
 
@@ -186,6 +188,72 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
     }
 
+    public function testBackedComponentTagWithBracketAttributeValueIsNotTruncated(): void
+    {
+        $compiled = $this->compileView('backed-component-with-brackets');
+
+        // The component's data array is located by regex; it used to be anchored
+        // on a bare space, so a value containing "[...] " (e.g. a Tailwind
+        // arbitrary-value class) ended the capture mid-string and the fragment
+        // failed to parse.
+        $this->assertStringContainsString(
+            "new App\View\Components\BackedComponent(b: 'test', panelClass: 'max-h-[80vh] flex flex-col')",
+            $compiled,
+        );
+    }
+
+    public function testCompiledOutputReportsTheComponentClassesItReflected(): void
+    {
+        // The compiled call site is built from the component's own signature, so
+        // the class is a compilation input the template's source hash cannot
+        // see. The output names it, which is how the bootstrap knows to
+        // recompile this template when the component changes shape.
+        $filePath = __DIR__ . '/../skeleton/resources/views/backed-component-with-brackets.blade.php';
+
+        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(
+            realpath($filePath) ?: $filePath,
+            'backed-component-with-brackets',
+        );
+
+        $this->assertSame(
+            [BackedComponent::class],
+            $phpFileContentsWithLineMap->componentClasses,
+        );
+    }
+
+    public function testCompiledOutputReportsRenderedLivewireClasses(): void
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/livewire-with-kebab-attributes.blade.php';
+
+        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(
+            realpath($filePath) ?: $filePath,
+            'livewire-with-kebab-attributes',
+        );
+
+        // LivewireTagCompiler reflects mount() the same way, so its class has to
+        // be reported too.
+        $this->assertSame(
+            [WiredComponent::class],
+            $phpFileContentsWithLineMap->componentClasses,
+        );
+    }
+
+    public function testComponentClassesAreNotCarriedOverBetweenCompilations(): void
+    {
+        $this->bladeToPHPCompiler->compileStandalone(
+            (string) realpath(__DIR__ . '/../skeleton/resources/views/backed-component-with-brackets.blade.php'),
+            'backed-component-with-brackets',
+        );
+
+        $filePath = (string) realpath(__DIR__ . '/../skeleton/resources/views/signed-template.blade.php');
+        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone($filePath, 'signed-template');
+
+        // The compiler is a shared service: a template that renders nothing must
+        // not inherit the previous template's classes, or it would recompile
+        // whenever an unrelated component changed.
+        $this->assertSame([], $phpFileContentsWithLineMap->componentClasses);
+    }
+
     public function testLivewireComponentBodyGetsInstanceScope(): void
     {
         $compiled = $this->compileView('livewire.wired-component');
@@ -195,6 +263,40 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $this */', $compiled);
         $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $__livewire */', $compiled);
         $this->assertStringContainsString('/** @var string $c */', $compiled);
+    }
+
+    public function testLivewireTagKebabCaseAttributesAreCamelized(): void
+    {
+        $compiled = $this->compileView('livewire-with-kebab-attributes');
+
+        // Livewire compiles kebab-case tag attributes to kebab-case array keys
+        // as-is and camelizes them at mount(); property assignment must match.
+        $this->assertStringContainsString('$component->accountId = $b;', $compiled);
+        $this->assertStringContainsString("\$component->scopeType = 'account';", $compiled);
+    }
+
+    public function testAliasedLivewireTagUsesTheRegisteredClass(): void
+    {
+        $compiled = $this->compileView('livewire-aliased-component');
+
+        // cart.preview is registered as App\Contexts\Widgets\AliasedWidget, which
+        // sits outside livewire.class_namespace. Rebuilding the class name from
+        // that namespace would emit App\Livewire\Cart\Preview, a class that does
+        // not exist, and turn one working tag into a pile of errors.
+        $this->assertStringContainsString('$component = new App\Contexts\Widgets\AliasedWidget();', $compiled);
+        // mount() is reflected off the resolved class, so its argument is passed.
+        $this->assertStringContainsString('$component->mount(sourceId: $b);', $compiled);
+        $this->assertStringContainsString("\$component->label = 'cart';", $compiled);
+    }
+
+    public function testDynamicLivewireComponentNameIsSkippedInsteadOfAborting(): void
+    {
+        $compiled = $this->compileView('livewire-dynamic-component');
+
+        // A dynamic component name (a variable, not a literal) cannot be
+        // statically resolved, so the block is dropped instead of aborting
+        // analysis of the whole template.
+        $this->assertStringNotContainsString('$component = new', $compiled);
     }
 
     public function testNonComponentTemplateGetsNoComponentScope(): void

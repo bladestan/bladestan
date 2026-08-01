@@ -3,9 +3,12 @@
 declare(strict_types=1);
 
 use Bladestan\Blade\PhpLineToTemplateLineResolver;
+use Bladestan\Bootstrap\CompiledPathDetector;
+use Bladestan\Bootstrap\PhpStanCommandResolver;
 use Bladestan\Bootstrap\RawTemplatePathDetector;
 use Bladestan\Bootstrap\TemplateCompilationBootstrap;
 use Bladestan\Compiler\BladeToPHPCompiler;
+use Bladestan\Compiler\ComponentClassShapeHasher;
 use Bladestan\Compiler\ComponentScopeResolver;
 use Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler;
 use Bladestan\Compiler\LivewireTagCompiler;
@@ -46,9 +49,26 @@ if (! defined('LARAVEL_START')) {
 // the only one that should build them. Workers (WorkerCommand, FixerWorkerCommand)
 // are excluded on top of that, because recompiling from a worker would race
 // sibling workers analyzing the compiled files.
-$bladestanArgv = $_SERVER['argv'] ?? [];
-$bladestanIsWorkerProcess = in_array($bladestanArgv[1] ?? '', ['worker', 'fixer:worker'], true);
-$bladestanIsAnalyseCommand = in_array($bladestanArgv[1] ?? '', ['analyse', 'analyze'], true);
+/** @var list<string> $bladestanArgv */
+$bladestanArgv = array_values(array_map(
+    static fn (mixed $bladestanToken): string => is_scalar($bladestanToken) ? (string) $bladestanToken : '',
+    (array) ($_SERVER['argv'] ?? []),
+));
+// An absent command means `analyse`, because PHPStan's binary sets it as the
+// default one — but only for that binary. A process that merely builds a
+// PHPStan container and runs its bootstrap files (a PHPStanTestCase under
+// PHPUnit, an editor integration embedding the analyser) has argv of its own,
+// which would otherwise read as an unnamed analyse run and make it compile
+// templates and print advice meant for someone running PHPStan. The binary
+// defines __PHPSTAN_RUNNING__ before anything else happens, so that constant
+// tells the two apart; its own name is the fallback, so a release that stops
+// defining the constant degrades to a slightly cruder check instead of
+// silently never compiling again.
+$bladestanCommandResolver = new PhpStanCommandResolver();
+$bladestanIsPhpStanCli = defined('__PHPSTAN_RUNNING__')
+    || str_starts_with(basename($bladestanArgv[0] ?? ''), 'phpstan');
+$bladestanIsWorkerProcess = $bladestanCommandResolver->isWorker($bladestanArgv);
+$bladestanIsAnalyseCommand = $bladestanIsPhpStanCli && $bladestanCommandResolver->isAnalyse($bladestanArgv);
 
 $bladestanCompiledViewPath = getcwd() . '/.bladestan';
 $bladestanShouldCompile = false;
@@ -57,6 +77,14 @@ $bladestanReportUnanalysed = true;
 $bladestanErrorFormatConfigured = false;
 /** @var list<string> $bladestanAnalysedPaths */
 $bladestanAnalysedPaths = [];
+// Whether the compiled directory is in the project's configured `paths`, which
+// is a different question from whether this run analyses it: a run scoped to
+// paths given on the command line analyses only those. Nothing is misconfigured
+// in that case, so the advisories below must not claim otherwise.
+$bladestanConfiguredForTemplates = false;
+// Whether PHPStan's path parameters could be read at all. When they cannot, the
+// loud warning below is the whole story; the advisories have no basis to speak.
+$bladestanPathsReadable = false;
 // Set when the compiled directory is among the analysed paths *by name* but
 // resolves to a different real directory than compiledViewPath — the
 // cwd-vs-config-dir divergence. Used to warn instead of silently leaving
@@ -93,66 +121,37 @@ if (isset($container) && $container instanceof PHPStan\DependencyInjection\Conta
         try {
             /** @var list<string> $bladestanAnalysedPaths */
             $bladestanAnalysedPaths = $container->getParameter('analysedPaths');
+            $bladestanPathsReadable = true;
 
-            // Canonicalize a path so two spellings of the same location compare
-            // equal: resolve `\` to `/`, then realpath the deepest ancestor that
-            // exists and re-append the rest. The compiled directory may not exist
-            // on a first run, so realpath cannot be applied to it whole; walking
-            // up to the nearest existing parent still collapses symlinks and
-            // `.`/`..` segments (e.g. a symlinked project root, or macOS
-            // `/var` -> `/private/var`) that a raw string compare would miss.
-            $bladestanCanonicalize = static function (string $path): string {
-                $path = rtrim(str_replace('\\', '/', $path), '/');
-                $suffix = '';
-                $probe = $path;
-                while ($probe !== '' && $probe !== '/') {
-                    $real = realpath($probe);
-                    if ($real !== false) {
-                        return rtrim(str_replace('\\', '/', $real), '/') . $suffix;
-                    }
+            $bladestanCompiledPathDetector = new CompiledPathDetector();
+            $bladestanShouldCompile = $bladestanCompiledPathDetector->isAnalysed(
+                $bladestanCompiledViewPath,
+                $bladestanAnalysedPaths,
+            );
+            $bladestanDivergentCandidate = $bladestanCompiledPathDetector->divergentPath(
+                $bladestanCompiledViewPath,
+                $bladestanAnalysedPaths,
+            );
 
-                    $slash = strrpos($probe, '/');
-                    if ($slash === false || $slash === 0) {
-                        break;
-                    }
-
-                    $suffix = substr($probe, $slash) . $suffix;
-                    $probe = substr($probe, 0, $slash);
-                }
-
-                return $path;
-            };
-
-            // Compile when the compiled directory is an analysed path *or* nested
-            // inside one. PHPStan's file discovery walks into subdirectories, so
-            // `paths: [build]` with `compiledViewPath: build/bladestan` analyses
-            // the compiled files just as directly as listing them explicitly;
-            // requiring exact equality left that output discovered but never
-            // refreshed, so it went permanently stale with no warning.
-            $bladestanTarget = $bladestanCanonicalize($bladestanCompiledViewPath);
-            $bladestanTargetBasename = basename($bladestanTarget);
-            foreach ($bladestanAnalysedPaths as $bladestanAnalysedPath) {
-                $bladestanCandidate = $bladestanCanonicalize($bladestanAnalysedPath);
-                if ($bladestanTarget === $bladestanCandidate
-                    || str_starts_with($bladestanTarget, $bladestanCandidate . '/')
-                ) {
-                    $bladestanShouldCompile = true;
-                    break;
-                }
-
-                // An analysed path named like the compiled directory but
-                // resolving elsewhere: the user added the compiled directory to
-                // `paths` (which PHPStan absolutizes against the config file)
-                // while compiledViewPath absolutized against the process cwd,
-                // and the two are genuinely different real directories. There is
-                // no `%configDir%` neon variable to anchor both sides to, so the
-                // best we can do from the bootstrap is remember the mismatch and
-                // report it loudly below rather than compile into one directory
-                // while PHPStan analyses the other in silence.
-                if (basename($bladestanCandidate) === $bladestanTargetBasename) {
-                    $bladestanDivergentCandidate = $bladestanCandidate;
-                }
+            // `analysedPathsFromConfig` holds the `paths` from the config file,
+            // which is what the advisories below are really about. It equals
+            // `analysedPaths` on an ordinary run; the two differ only when paths
+            // were passed on the command line, which replaces the analysed set
+            // for that run. Reading it separately keeps a rename of this one
+            // parameter from raising the (then untrue) warning about
+            // `analysedPaths`; falling back to the analysed paths just means
+            // scoped runs are indistinguishable again, as they were before.
+            try {
+                /** @var list<string> $bladestanConfiguredPaths */
+                $bladestanConfiguredPaths = $container->getParameter('analysedPathsFromConfig');
+            } catch (Throwable) {
+                $bladestanConfiguredPaths = $bladestanAnalysedPaths;
             }
+
+            $bladestanConfiguredForTemplates = $bladestanCompiledPathDetector->isAnalysed(
+                $bladestanCompiledViewPath,
+                $bladestanConfiguredPaths,
+            );
         } catch (Throwable) {
             // Only the analyse command warns: it is the only command that
             // compiles (see the compile gate below), so clear-result-cache,
@@ -310,10 +309,19 @@ if (isset($app)) {
         // user to add `.bladestan`) or when the divergence advisory above
         // already explained the mismatch, and let users who only want call-site
         // validation silence it with `bladestan.reportUnanalysedTemplates`.
+        //
+        // A run scoped to paths on the command line (`phpstan analyse artisan`)
+        // analyses only those paths, so `.bladestan` is legitimately absent from
+        // them. Nothing is misconfigured, telling the user to add a directory
+        // that is already in their `paths` is wrong, and following the advice
+        // would change nothing — so the configured paths, not this run's, decide
+        // whether there is anything to say.
         if ($bladestanIsAnalyseCommand
             && $bladestanConflicts === []
             && $bladestanExtensionLoaded
+            && $bladestanPathsReadable
             && ! $bladestanShouldCompile
+            && ! $bladestanConfiguredForTemplates
             && $bladestanDivergentCandidate === null
             && $bladestanReportUnanalysed
         ) {
@@ -328,10 +336,12 @@ if (isset($app)) {
         // chosen, so errors will point at the compiled PHP instead of the
         // original template. Only `--error-format=blade` remaps them. Choosing
         // any format (on the CLI or in config) means the user picked their
-        // output and silences this.
+        // output and silences this, and so does turning the advisories off: a
+        // team that reads the compiled paths on purpose should not have to
+        // configure an error format just to stop being reminded.
         $bladestanErrorFormatOnCli = false;
         foreach ($bladestanArgv as $bladestanArg) {
-            if ($bladestanArg === '--error-format' || str_starts_with((string) $bladestanArg, '--error-format=')) {
+            if ($bladestanArg === '--error-format' || str_starts_with($bladestanArg, '--error-format=')) {
                 $bladestanErrorFormatOnCli = true;
                 break;
             }
@@ -339,6 +349,7 @@ if (isset($app)) {
 
         if ($bladestanIsAnalyseCommand
             && $bladestanShouldCompile
+            && $bladestanReportUnanalysed
             && ! $bladestanErrorFormatOnCli
             && ! $bladestanErrorFormatConfigured
         ) {
@@ -393,6 +404,7 @@ if (isset($app)) {
             (new TemplateCompilationBootstrap(
                 $bladestanTemplateDiscovery,
                 $bladeToPhpCompiler,
+                new ComponentClassShapeHasher(),
                 $bladestanCompiledViewPath,
                 getcwd() ?: '',
             ))->run();

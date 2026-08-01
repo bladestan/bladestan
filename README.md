@@ -55,6 +55,8 @@ That's it. Bladestan creates the `.bladestan` directory for you on the first run
 
 The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own, and it must point at `.bladestan`, not your view directory: `resources/views` holds raw `.blade.php` source, which PHPStan cannot read as PHP. Get either of these wrong and Bladestan warns you directly, so the mistake doesn't fail silently: if `.bladestan` is missing from `paths`, call-site validation still works but template bodies aren't analyzed (silence the warning with `parameters.bladestan.reportUnanalysedTemplates: false` if that's intentional); if a raw view directory ends up in `paths` instead, Bladestan tells you to remove it. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
 
+Passing paths on the command line (`vendor/bin/phpstan analyse app/Http`) scopes the run to those paths, which leaves templates out of it: nothing is recompiled and no template body is checked, exactly as PHPStan skips every other file you didn't ask for. Run without the paths argument to analyze your templates again.
+
 > [!TIP]
 > In CI, cache the `.bladestan` directory and PHPStan's result cache between runs, the same way you cache `vendor`. Without them each run recompiles every template and analyzes it from scratch; with them, only what changed is redone.
 
@@ -216,7 +218,7 @@ vendor/bin/phpstan analyse --error-format=blade
  ------ -----------------------------------------------
 ```
 
-Without it, template errors point at the compiled PHP under `.bladestan` instead of your `.blade.php` files, so Bladestan reminds you to pass `--error-format=blade` when it sees compiled templates being analyzed without a chosen format. Selecting any format, on the command line or with the `errorFormat` config parameter, silences the reminder.
+Without it, template errors point at the compiled PHP under `.bladestan` instead of your `.blade.php` files, so Bladestan reminds you to pass `--error-format=blade` when it sees compiled templates being analyzed without a chosen format. Selecting any format, on the command line or with the `errorFormat` config parameter, silences the reminder, and so does `parameters.bladestan.reportUnanalysedTemplates: false` if you read the compiled paths on purpose.
 
 > [!NOTE]
 > The `blade` formatter is a human-readable table, so scripting against its output is brittle (long paths wrap across lines). PHPStan's machine-readable formatters (`json`, `raw`, and so on) give one line per error, but they report the compiled `.bladestan` path and line rather than the `.blade.php` source, because the remapping currently lives only in the `blade` formatter. This is the biggest rough edge left in Bladestan today, and fixing it properly means teaching every formatter to remap, which is proposed upstream in PHPStan ([phpstan/phpstan#14912](https://github.com/phpstan/phpstan/issues/14912)).

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests\Compiler;
 
+use App\Contexts\Widgets\AliasedWidget;
 use App\Livewire\WiredComponent;
 use Bladestan\Compiler\ComponentScopeResolver;
 use Illuminate\View\ComponentAttributeBag;
@@ -173,6 +174,51 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         // Component scope is still present alongside the reflected members.
         $this->assertSame('\\' . ComponentSlot::class, $scope['slot'] ?? null);
         $this->assertSame('\\' . ComponentAttributeBag::class, $scope['attributes'] ?? null);
+    }
+
+    public function testBackingClassResolvesForAViewUnderARegisteredViewNamespace(): void
+    {
+        // A template living under a registered view namespace is named with the
+        // namespace prefix and the anonymous-component directory both. Dropping
+        // only the prefix leaves the directory to double into the class name
+        // (App\View\Components\Components\Panel), so nothing backs the component
+        // and every member it reads becomes an undefined variable. Adding a view
+        // namespace must not change which class backs a component.
+        $scope = $this->componentScopeResolver->resolve('skeleton::components.panel', '<div>{{ $heading }}</div>');
+
+        $this->assertSame('string', $scope['heading'] ?? null);
+        $this->assertSame('\Closure(): string', $scope['badge'] ?? null);
+    }
+
+    public function testBackingClassResolvesForAnAnonymousDirectoryRootedAtTheViewNamespace(): void
+    {
+        // The anonymous-component directory registered as "rooted::components"
+        // carries the namespace prefix itself; the view name it produces does
+        // not repeat it, so the two have to be compared bare.
+        $scope = $this->componentScopeResolver->resolve('rooted::components.panel', '<div>{{ $heading }}</div>');
+
+        $this->assertSame('string', $scope['heading'] ?? null);
+        $this->assertSame('\Closure(): string', $scope['badge'] ?? null);
+    }
+
+    public function testClassComponentAddressedThroughItsNamespaceAloneStillResolves(): void
+    {
+        // No anonymous-component directory in the name: the prefix is all that
+        // comes off.
+        $scope = $this->componentScopeResolver->resolve('skeleton::panel', '<div>{{ $heading }}</div>');
+
+        $this->assertSame('string', $scope['heading'] ?? null);
+    }
+
+    public function testAliasedLivewireViewGetsTheRegisteredComponentScope(): void
+    {
+        // livewire.cart.preview is the view of the cart.preview component, which
+        // is registered as App\Contexts\Widgets\AliasedWidget outside
+        // livewire.class_namespace (see TestServiceProvider).
+        $scope = $this->componentScopeResolver->resolve('livewire.cart.preview', '<div>{{ $label }}</div>');
+
+        $this->assertSame('\\' . AliasedWidget::class, $scope['this'] ?? null);
+        $this->assertSame('string', $scope['label'] ?? null);
     }
 
     /**

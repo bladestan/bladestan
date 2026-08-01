@@ -71,6 +71,17 @@ final class BladeToPHPCompiler
     private array $errors = [];
 
     /**
+     * Classes of the components rendered by the template being compiled, as a
+     * set keyed by class name. Their signature is reflected into the call sites
+     * written below, so it is a compilation input the template's own source
+     * hash cannot see; the compiled output carries the list out to the caller
+     * for exactly that reason. Reset per compileStandalone().
+     *
+     * @var array<string, true>
+     */
+    private array $referencedComponentClasses = [];
+
+    /**
      * @var array<string, Type>
      */
     private readonly array $shared;
@@ -132,6 +143,14 @@ final class BladeToPHPCompiler
      * composer's provided value doesn't touch the .blade.php file at all.
      * The bootstrap calls this on every run, even for a template whose source
      * is unchanged, and recompiles when it differs from the manifest.
+     *
+     * This covers only the class backing *this* template. The classes of the
+     * components the template *renders* are a compilation input too (their
+     * signature is reflected into the call sites this compiler writes), but
+     * finding them means compiling the template, so they cannot be hashed from
+     * the source alone. The compiled output reports them instead, as
+     * `PhpFileContentsWithLineMap::$componentClasses`, and the bootstrap tracks
+     * their shape through ComponentClassShapeHasher.
      */
     public function getTemplateDependencyHash(string $viewName, string $fileContents): string
     {
@@ -156,6 +175,7 @@ final class BladeToPHPCompiler
         string $viewName,
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
+        $this->referencedComponentClasses = [];
 
         $fileContents = @file_get_contents($resolvedTemplateFilePath);
         if ($fileContents === false) {
@@ -213,7 +233,12 @@ final class BladeToPHPCompiler
 
         $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($phpCode);
 
-        return new PhpFileContentsWithLineMap($phpCode, $phpLinesToTemplateLines, $this->errors);
+        return new PhpFileContentsWithLineMap(
+            $phpCode,
+            $phpLinesToTemplateLines,
+            $this->errors,
+            array_keys($this->referencedComponentClasses),
+        );
     }
 
     /**
@@ -330,7 +355,12 @@ final class BladeToPHPCompiler
             $this->errors[] = [$invalidArgumentException->getMessage(), 'bladestan.missing'];
         }
 
-        return $this->livewireTagCompiler->replace($rawPhpContent);
+        $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
+        foreach ($this->livewireTagCompiler->getReferencedClasses() as $livewireClass) {
+            $this->referencedComponentClasses[$livewireClass] = true;
+        }
+
+        return $rawPhpContent;
     }
 
     private function resolveComponents(string $rawPhpContent): string
@@ -338,6 +368,7 @@ final class BladeToPHPCompiler
         preg_match_all(self::BACKED_COMPONENT_REGEX, $rawPhpContent, $components, PREG_SET_ORDER);
         foreach ($components as $component) {
             $class = $component[1];
+            $this->referencedComponentClasses[ltrim($class, '\\')] = true;
             $arrayString = trim($component[2], ' ,');
             $attributes = $this->convertComponentData($arrayString, $class);
 

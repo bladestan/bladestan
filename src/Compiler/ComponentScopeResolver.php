@@ -57,12 +57,15 @@ final class ComponentScopeResolver
 
     private readonly PropsDirectiveExtractor $propsDirectiveExtractor;
 
+    private readonly LivewireComponentClassResolver $livewireComponentClassResolver;
+
     public function __construct(
         private readonly BladeCompiler $bladeCompiler,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
     ) {
         $this->bladeInertRegionMasker = new BladeInertRegionMasker();
         $this->propsDirectiveExtractor = new PropsDirectiveExtractor();
+        $this->livewireComponentClassResolver = new LivewireComponentClassResolver();
     }
 
     /**
@@ -197,28 +200,39 @@ final class ComponentScopeResolver
             return true;
         }
 
-        foreach ($this->bladeCompiler->getAnonymousComponentNamespaces() as $prefix => $directory) {
-            if (! is_string($prefix)) {
-                continue;
-            }
-
-            if (! is_string($directory)) {
-                continue;
-            }
-
-            $directoryPrefix = str_replace('/', '.', trim($directory, '/')) . '.';
-            if (str_starts_with($viewName, $prefix . '::') || str_starts_with($viewName, $directoryPrefix)) {
-                return true;
-            }
-        }
-
-        foreach (array_keys($this->bladeCompiler->getClassComponentNamespaces()) as $prefix) {
-            if (is_string($prefix) && str_starts_with($viewName, $prefix . '::')) {
+        foreach ($this->componentDirectoriesByPrefix() as $prefix => $directory) {
+            if ($this->componentNamesUnderNamespace($viewName, $prefix, $directory) !== []) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * Every registered component prefix, mapped to the anonymous-component
+     * directory rooted under it (an empty string when the prefix registers only
+     * a class namespace).
+     *
+     * @return array<string, string>
+     */
+    private function componentDirectoriesByPrefix(): array
+    {
+        $directories = [];
+
+        foreach (array_keys($this->bladeCompiler->getClassComponentNamespaces()) as $prefix) {
+            if (is_string($prefix)) {
+                $directories[$prefix] = '';
+            }
+        }
+
+        foreach ($this->bladeCompiler->getAnonymousComponentNamespaces() as $prefix => $directory) {
+            if (is_string($prefix) && is_string($directory)) {
+                $directories[$prefix] = $directory;
+            }
+        }
+
+        return $directories;
     }
 
     /**
@@ -230,42 +244,18 @@ final class ComponentScopeResolver
      */
     private function resolveBackingClass(string $viewName): ?string
     {
-        $classNamespaces = $this->bladeCompiler->getClassComponentNamespaces();
+        $directories = $this->componentDirectoriesByPrefix();
 
-        // A class-component namespace addressed directly (backoffice::orders.row).
-        foreach ($classNamespaces as $prefix => $namespace) {
-            if (is_string($prefix) && is_string($namespace) && str_starts_with($viewName, $prefix . '::')) {
-                $class = $this->buildComponentClass($namespace, substr($viewName, strlen($prefix) + 2));
+        foreach ($this->bladeCompiler->getClassComponentNamespaces() as $prefix => $namespace) {
+            if (! is_string($prefix) || ! is_string($namespace)) {
+                continue;
+            }
+
+            foreach ($this->componentNamesUnderNamespace($viewName, $prefix, $directories[$prefix] ?? '') as $componentName) {
+                $class = $this->buildComponentClass($namespace, $componentName);
                 if ($class !== null) {
                     return $class;
                 }
-            }
-        }
-
-        // A view under a registered anonymous-component directory, resolved to
-        // the class namespace sharing its prefix (Blade::componentNamespace).
-        foreach ($this->bladeCompiler->getAnonymousComponentNamespaces() as $prefix => $directory) {
-            if (! is_string($prefix)) {
-                continue;
-            }
-
-            if (! is_string($directory)) {
-                continue;
-            }
-
-            $classNamespace = $classNamespaces[$prefix] ?? null;
-            if (! is_string($classNamespace)) {
-                continue;
-            }
-
-            $rest = $this->viewNameUnderNamespace($viewName, $prefix, $directory);
-            if ($rest === null) {
-                continue;
-            }
-
-            $class = $this->buildComponentClass($classNamespace, $rest);
-            if ($class !== null) {
-                return $class;
             }
         }
 
@@ -280,18 +270,39 @@ final class ComponentScopeResolver
         return null;
     }
 
-    private function viewNameUnderNamespace(string $viewName, string $prefix, string $directory): ?string
+    /**
+     * The component names a view name can stand for under one registered prefix,
+     * most specific first, or an empty list when it stands for none.
+     *
+     * A view name arrives in one of three shapes: addressed through the view
+     * namespace and the anonymous-component directory both
+     * (`webshop::components.member.savings`), through the namespace alone
+     * (`webshop::member.savings`), or through the directory alone
+     * (`components.member.savings`). The first shape is what every template
+     * under a registered view namespace takes, and it is the one that needs both
+     * parts removed: dropping only the namespace prefix leaves the directory to
+     * double into the class name (`…\Components\Components\Member\Savings`).
+     *
+     * @return list<string>
+     */
+    private function componentNamesUnderNamespace(string $viewName, string $prefix, string $directory): array
     {
-        if (str_starts_with($viewName, $prefix . '::')) {
-            return substr($viewName, strlen($prefix) + 2);
+        // A directory registered as `webshop::components` is rooted at the view
+        // namespace, so match it against the remainder, which is already bare.
+        $directoryPrefix = str_replace('/', '.', trim(Str::afterLast($directory, '::'), '/'));
+
+        if (! str_starts_with($viewName, $prefix . '::')) {
+            return $directoryPrefix !== '' && str_starts_with($viewName, $directoryPrefix . '.')
+                ? [substr($viewName, strlen($directoryPrefix) + 1)]
+                : [];
         }
 
-        $directoryPrefix = str_replace('/', '.', trim($directory, '/')) . '.';
-        if ($directoryPrefix !== '.' && str_starts_with($viewName, $directoryPrefix)) {
-            return substr($viewName, strlen($directoryPrefix));
+        $rest = substr($viewName, strlen($prefix) + 2);
+        if ($directoryPrefix !== '' && str_starts_with($rest, $directoryPrefix . '.')) {
+            return [substr($rest, strlen($directoryPrefix) + 1), $rest];
         }
 
-        return null;
+        return [$rest];
     }
 
     /**
@@ -316,10 +327,11 @@ final class ComponentScopeResolver
     }
 
     /**
-     * Resolve the Livewire component class backing a view, using Livewire's
-     * class-namespace convention (a `livewire.create-refund` view maps to
-     * `App\Livewire\CreateRefund`). A component with a custom render() pointing
-     * template's signature for those.
+     * Resolve the Livewire component class backing a view, by the convention
+     * that a `livewire.create-refund` view is the view of the `create-refund`
+     * component. Livewire itself answers what class that name stands for, since
+     * the configured class namespace is only its discovery root; the namespace
+     * is the fallback for a name Livewire does not know.
      *
      * @return class-string<LivewireComponent>|null
      */
@@ -329,11 +341,14 @@ final class ComponentScopeResolver
             return null;
         }
 
-        return $this->buildComponentClass(
-            $this->livewireClassNamespace(),
-            substr($viewName, strlen('livewire.')),
-            LivewireComponent::class,
-        );
+        $componentName = substr($viewName, strlen('livewire.'));
+
+        return $this->livewireComponentClassResolver->resolve($componentName)
+            ?? $this->buildComponentClass(
+                $this->livewireClassNamespace(),
+                $componentName,
+                LivewireComponent::class,
+            );
     }
 
     /**

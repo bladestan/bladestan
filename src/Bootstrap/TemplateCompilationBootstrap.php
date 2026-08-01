@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Bladestan\Bootstrap;
 
 use Bladestan\Compiler\BladeToPHPCompiler;
+use Bladestan\Compiler\ComponentClassShapeHasher;
 use Bladestan\Discovery\TemplateDiscovery;
 use FilesystemIterator;
 use RecursiveDirectoryIterator;
@@ -41,6 +42,7 @@ final class TemplateCompilationBootstrap
     public function __construct(
         private readonly TemplateDiscovery $templateDiscovery,
         private readonly BladeToPHPCompiler $bladeToPHPCompiler,
+        private readonly ComponentClassShapeHasher $componentClassShapeHasher,
         private readonly string $compiledViewPath,
         private readonly string $projectRoot,
     ) {
@@ -137,7 +139,7 @@ final class TemplateCompilationBootstrap
                     'bladestan.compilation',
                 );
                 if ($this->writeAtomically($outputPath, $stub)) {
-                    $newEntries[$viewName] = $this->manifestEntry($filePath, $sourceHash, '', $relativeOutputPath);
+                    $newEntries[$viewName] = $this->manifestEntry($filePath, $sourceHash, '', [], $relativeOutputPath);
                 }
 
                 continue;
@@ -147,16 +149,20 @@ final class TemplateCompilationBootstrap
             if ($existingEntry !== null
                 && $existingEntry['sourceHash'] === $sourceHash
                 && $existingEntry['dependencyHash'] === $dependencyHash
+                && $this->recordedComponentShapesMatch($existingEntry['classHashes'])
                 && is_file($outputPath)
             ) {
                 $newEntries[$viewName] = $existingEntry;
                 continue;
             }
 
+            $componentClasses = [];
+
             try {
                 /** @throws Throwable */
                 $result = $this->bladeToPHPCompiler->compileStandalone($filePath, $viewName);
                 $phpFileContents = $result->phpFileContents;
+                $componentClasses = $result->componentClasses;
             } catch (Throwable $throwable) {
                 // A template that throws during compilation must still leave a
                 // signal, or it drops out of analysis silently. Overwrite any
@@ -171,7 +177,13 @@ final class TemplateCompilationBootstrap
             }
 
             if ($this->writeAtomically($outputPath, $phpFileContents)) {
-                $newEntries[$viewName] = $this->manifestEntry($filePath, $sourceHash, $dependencyHash, $relativeOutputPath);
+                $newEntries[$viewName] = $this->manifestEntry(
+                    $filePath,
+                    $sourceHash,
+                    $dependencyHash,
+                    $this->componentClassShapeHasher->hashAll($componentClasses),
+                    $relativeOutputPath,
+                );
             }
         }
 
@@ -231,7 +243,7 @@ final class TemplateCompilationBootstrap
     }
 
     /**
-     * @return array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>}|null
+     * @return array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, classHashes: array<string, string>, output: string}>}|null
      */
     private function loadManifest(): ?array
     {
@@ -254,8 +266,44 @@ final class TemplateCompilationBootstrap
             return null;
         }
 
-        /** @var array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>} $manifest */
+        foreach ($manifest['templates'] as $entry) {
+            if (! $this->isCompleteManifestEntry($entry)) {
+                return null;
+            }
+        }
+
+        /** @var array{projectRoot: string, contextHash: string, templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, classHashes: array<string, string>, output: string}>} $manifest */
         return $manifest;
+    }
+
+    /**
+     * Whether an entry carries every field this run reads back.
+     *
+     * A manifest written by an older Bladestan (or hand-edited) can be missing a
+     * field the staleness check needs. Reading that as an empty value would
+     * silently disable the check it belongs to and pin stale output, so an
+     * incomplete entry rejects the whole manifest instead; the fallback is a
+     * full recompile, which is always safe.
+     */
+    private function isCompleteManifestEntry(mixed $entry): bool
+    {
+        if (! is_array($entry)
+            || ! is_string($entry['source'] ?? null)
+            || ! is_string($entry['sourceHash'] ?? null)
+            || ! is_string($entry['dependencyHash'] ?? null)
+            || ! is_string($entry['output'] ?? null)
+            || ! is_array($entry['classHashes'] ?? null)
+        ) {
+            return false;
+        }
+
+        foreach ($entry['classHashes'] as $class => $hash) {
+            if (! is_string($class) || ! is_string($hash)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -295,20 +343,48 @@ final class TemplateCompilationBootstrap
      * A manifest entry describing one compiled template. Recorded only after
      * its compiled output has actually landed on disk.
      *
-     * @return array{source: string, sourceHash: string, dependencyHash: string, output: string}
+     * @param array<string, string> $classHashes Shape hash of each component class the output reflects
+     * @return array{source: string, sourceHash: string, dependencyHash: string, classHashes: array<string, string>, output: string}
      */
     private function manifestEntry(
         string $filePath,
         string $sourceHash,
         string $dependencyHash,
+        array $classHashes,
         string $relativeOutputPath,
     ): array {
         return [
             'source' => $filePath,
             'sourceHash' => $sourceHash,
             'dependencyHash' => $dependencyHash,
+            'classHashes' => $classHashes,
             'output' => $relativeOutputPath,
         ];
+    }
+
+    /**
+     * Whether every component class a template rendered still has the shape it
+     * had when that template was compiled.
+     *
+     * A template's own source hash says nothing about the classes of the
+     * components it renders, yet the compiled output calls their constructor
+     * (or Livewire's mount()) with arguments derived from that signature. Adding
+     * a required parameter to a component would otherwise leave every compiled
+     * caller passing the old argument list, and PHPStan would report the missing
+     * argument against generated code the user cannot fix; removing one would
+     * hide real errors just as silently.
+     *
+     * @param array<string, string> $classHashes
+     */
+    private function recordedComponentShapesMatch(array $classHashes): bool
+    {
+        foreach ($classHashes as $class => $hash) {
+            if ($this->componentClassShapeHasher->hash($class) !== $hash) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

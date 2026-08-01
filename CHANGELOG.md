@@ -32,7 +32,8 @@ analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
   `paths`, or when a raw view directory is left in `paths` instead; the first
   warning can be silenced with `parameters.bladestan.reportUnanalysedTemplates: false`.
 - Bladestan reminds you to pass `--error-format=blade` when it sees compiled
-  templates analysed without a chosen error format.
+  templates analysed without a chosen error format; the same setting silences
+  this reminder.
 - AI agent guidance for writing signatures, discoverable via Laravel Boost.
 
 ### Changed
@@ -44,6 +45,18 @@ analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
 
 - A string literal in a template whose text resembles a `use` statement is no
   longer corrupted during compilation.
+- A component tag attribute whose value contains a bracket, such as a
+  Tailwind arbitrary-value class, no longer truncates the component's data
+  and fails to compile.
+- A component whose data cannot be parsed is reported as an error against the
+  template instead of aborting analysis with no file attributed.
+- A `<livewire:...>` tag attribute written in kebab-case is camelized to
+  match the property Livewire actually sets at runtime.
+- A `@livewire` or `<livewire:...>` tag with a dynamic component name is
+  skipped instead of aborting analysis of the whole template.
+- A Livewire component is resolved to the class Livewire itself would render,
+  so a component registered outside `livewire.class_namespace` is analysed
+  against the class that actually backs it instead of one that does not exist.
 
 ## [0.11.7] - 2026-07-18
 

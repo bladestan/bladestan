@@ -2,9 +2,11 @@
 
 namespace Bladestan\Tests;
 
+use App\Contexts\Widgets\AliasedWidget;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\View\Compilers\BladeCompiler;
+use Livewire\Livewire;
 
 class TestServiceProvider extends ServiceProvider
 {
@@ -19,5 +21,15 @@ class TestServiceProvider extends ServiceProvider
         $bladeCompiler = resolve(BladeCompiler::class);
         $bladeCompiler->componentNamespace('App\\View\\Components', 'skeleton');
         $bladeCompiler->anonymousComponentNamespace('components', 'skeleton');
+
+        // The same pair with the anonymous directory rooted at the view
+        // namespace, the form that keeps two view trees unambiguous when both
+        // are on the view path list.
+        $bladeCompiler->componentNamespace('App\\View\\Components', 'rooted');
+        $bladeCompiler->anonymousComponentNamespace('rooted::components', 'rooted');
+
+        // A Livewire component registered under an explicit alias, outside
+        // livewire.class_namespace, so only Livewire's own registry can name it.
+        Livewire::component('cart.preview', AliasedWidget::class);
     }
 }

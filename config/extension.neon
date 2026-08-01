@@ -22,7 +22,9 @@ parameters:
         compiledViewPath: %currentWorkingDirectory%/.bladestan
         # Warn on stderr when `.bladestan` is missing from the analysed paths, so
         # a template left unanalysed is a visible misconfiguration rather than a
-        # silent one. Set to false if you only want view() call-site validation.
+        # silent one. Set to false if you only want view() call-site validation;
+        # that also drops the reminder to pass `--error-format=blade`, which is
+        # the other advisory a settled setup has already answered for itself.
         reportUnanalysedTemplates: true
 
     bootstrapFiles:
@@ -129,6 +131,7 @@ services:
     - Bladestan\NodeAnalyzer\ClassPropertiesResolver
     - Bladestan\NodeAnalyzer\ValueResolver
     - Bladestan\Compiler\BladeToPHPCompiler
+    - Bladestan\Compiler\ComponentClassShapeHasher
     - Bladestan\Compiler\ComponentScopeResolver
     - Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
     - Bladestan\Compiler\LivewireTagCompiler

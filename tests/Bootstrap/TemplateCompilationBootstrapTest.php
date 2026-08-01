@@ -4,8 +4,11 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests\Bootstrap;
 
+use App\Livewire\WiredComponent;
+use App\View\Components\BackedComponent;
 use Bladestan\Bootstrap\TemplateCompilationBootstrap;
 use Bladestan\Compiler\BladeToPHPCompiler;
+use Bladestan\Compiler\ComponentClassShapeHasher;
 use Bladestan\Discovery\TemplateDiscovery;
 use FilesystemIterator;
 use PHPStan\Testing\PHPStanTestCase;
@@ -13,6 +16,10 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use SplFileInfo;
 
+/**
+ * @phpstan-type ManifestEntry array{source: string, sourceHash: string, dependencyHash: string, classHashes: array<string, string>, output: string}
+ * @phpstan-type Manifest array{projectRoot: string, contextHash: string, templates: array<string, ManifestEntry>}
+ */
 final class TemplateCompilationBootstrapTest extends PHPStanTestCase
 {
     private const OUTPUT_ROOT = '__templates__';
@@ -82,16 +89,84 @@ final class TemplateCompilationBootstrapTest extends PHPStanTestCase
         $past = time() - 1000;
         touch($compiled, $past);
 
-        $manifestPath = $this->compiledViewPath . '/' . self::MANIFEST;
-        /** @var array{templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>} $manifest */
-        $manifest = json_decode((string) file_get_contents($manifestPath), true);
-        $manifest['templates']['components.panel']['dependencyHash'] = 'stale-dependency-hash';
-        file_put_contents($manifestPath, (string) json_encode($manifest));
+        $this->writeManifestEntry('components.panel', [
+            ...$this->manifestEntry('components.panel'),
+            'dependencyHash' => 'stale-dependency-hash',
+        ]);
 
         $templateCompilationBootstrap->run();
 
         clearstatcache();
         $this->assertNotSame($past, filemtime($compiled), 'Template with a stale dependencyHash was not recompiled');
+    }
+
+    public function testRecordsTheClassOfEveryComponentATemplateRenders(): void
+    {
+        $this->createBootstrap()
+            ->run();
+
+        $this->assertSame(
+            [BackedComponent::class],
+            array_keys($this->manifestEntry('backed-component-with-brackets')['classHashes']),
+        );
+        $this->assertSame(
+            [WiredComponent::class],
+            array_keys($this->manifestEntry('livewire-with-kebab-attributes')['classHashes']),
+        );
+    }
+
+    public function testRecompilesWhenARenderedComponentClassChangesShape(): void
+    {
+        // The compiled output of backed-component-with-brackets calls
+        // App\View\Components\BackedComponent's constructor, so that
+        // constructor is a compilation input the template's own source hash
+        // cannot see: adding a required parameter to the component leaves every
+        // compiled caller passing the old argument list. Simulate the changed
+        // constructor by corrupting the recorded shape hash, which is what an
+        // outdated manifest looks like after the component was edited.
+        $templateCompilationBootstrap = $this->createBootstrap();
+        $templateCompilationBootstrap->run();
+
+        $compiled = $this->outputPath('backed-component-with-brackets');
+        $past = time() - 1000;
+        touch($compiled, $past);
+
+        $this->writeManifestEntry('backed-component-with-brackets', [
+            ...$this->manifestEntry('backed-component-with-brackets'),
+            'classHashes' => [
+                BackedComponent::class => 'stale-class-hash',
+            ],
+        ]);
+
+        $templateCompilationBootstrap->run();
+
+        clearstatcache();
+        $this->assertNotSame(
+            $past,
+            filemtime($compiled),
+            'Template rendering a changed component class was not recompiled',
+        );
+    }
+
+    public function testRecompilesEverythingWhenTheManifestPredatesAStalenessCheck(): void
+    {
+        // An entry written before the manifest grew a field cannot be trusted:
+        // the missing field is exactly the check that would have caught a stale
+        // template. Dropping it must force a recompile, not read as "no
+        // component classes to verify".
+        $templateCompilationBootstrap = $this->createBootstrap();
+        $templateCompilationBootstrap->run();
+
+        $compiled = $this->outputPath('backed-component-with-brackets');
+        $past = time() - 1000;
+        touch($compiled, $past);
+
+        $this->dropManifestEntryField('backed-component-with-brackets', 'classHashes');
+
+        $templateCompilationBootstrap->run();
+
+        clearstatcache();
+        $this->assertNotSame($past, filemtime($compiled), 'An incomplete manifest entry was trusted');
     }
 
     public function testKeepsCompiledOutputWhenSourceIsMomentarilyUnreadable(): void
@@ -141,16 +216,13 @@ final class TemplateCompilationBootstrapTest extends PHPStanTestCase
         $orphanPath = $this->compiledViewPath . '/' . $orphanRelative;
         file_put_contents($orphanPath, '<?php // orphan');
 
-        $manifestPath = $this->compiledViewPath . '/' . self::MANIFEST;
-        /** @var array{templates: array<string, array{source: string, sourceHash: string, dependencyHash: string, output: string}>} $manifest */
-        $manifest = json_decode((string) file_get_contents($manifestPath), true);
-        $manifest['templates']['orphaned-view'] = [
+        $this->writeManifestEntry('orphaned-view', [
             'source' => '/gone/orphaned-view.blade.php',
             'sourceHash' => 'deadbeef',
             'dependencyHash' => 'deadbeef',
+            'classHashes' => [],
             'output' => $orphanRelative,
-        ];
-        file_put_contents($manifestPath, (string) json_encode($manifest));
+        ]);
 
         $templateCompilationBootstrap->run();
 
@@ -189,6 +261,7 @@ final class TemplateCompilationBootstrapTest extends PHPStanTestCase
         return new TemplateCompilationBootstrap(
             self::getContainer()->getByType(TemplateDiscovery::class),
             self::getContainer()->getByType(BladeToPHPCompiler::class),
+            new ComponentClassShapeHasher(),
             $this->compiledViewPath,
             $this->projectRoot,
         );
@@ -197,6 +270,57 @@ final class TemplateCompilationBootstrapTest extends PHPStanTestCase
     private function outputPath(string $viewName): string
     {
         return $this->compiledViewPath . '/' . self::OUTPUT_ROOT . '/' . str_replace('.', '/', $viewName) . '.php';
+    }
+
+    /**
+     * @return ManifestEntry
+     */
+    private function manifestEntry(string $viewName): array
+    {
+        $manifest = $this->readManifest();
+        $this->assertArrayHasKey($viewName, $manifest['templates']);
+
+        return $manifest['templates'][$viewName];
+    }
+
+    /**
+     * @return Manifest
+     */
+    private function readManifest(): array
+    {
+        /** @var Manifest $manifest */
+        $manifest = json_decode((string) file_get_contents($this->compiledViewPath . '/' . self::MANIFEST), true);
+
+        return $manifest;
+    }
+
+    /**
+     * Replace one template's manifest entry, standing in for the state an
+     * outdated manifest is in when a compilation input changed behind
+     * Bladestan's back.
+     *
+     * @param ManifestEntry $entry
+     */
+    private function writeManifestEntry(string $viewName, array $entry): void
+    {
+        $manifest = $this->readManifest();
+        $manifest['templates'][$viewName] = $entry;
+
+        file_put_contents($this->compiledViewPath . '/' . self::MANIFEST, (string) json_encode($manifest));
+    }
+
+    /**
+     * Drop a field from one entry, standing in for a manifest written before the
+     * format grew that field.
+     */
+    private function dropManifestEntryField(string $viewName, string $field): void
+    {
+        $manifestPath = $this->compiledViewPath . '/' . self::MANIFEST;
+        /** @var array{templates: array<string, array<string, mixed>>} $manifest */
+        $manifest = json_decode((string) file_get_contents($manifestPath), true);
+        unset($manifest['templates'][$viewName][$field]);
+
+        file_put_contents($manifestPath, (string) json_encode($manifest));
     }
 
     private function deleteRecursively(string $path): void
