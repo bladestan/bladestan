@@ -1,0 +1,10 @@
+includes:
+    - ../../../config/extension.neon
+
+parameters:
+    bladestan:
+        forbidden_node:
+            nodes:
+                -
+                    type: Expr_FuncCall
+                    functions: invalid

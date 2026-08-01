@@ -23,6 +23,33 @@ includes:
 
 ## Features
 
+### Forbid Specific Functions In Templates
+
+Bladestan ships practical defaults for Blade templates:
+
+- node types: `Expr_Eval`, `Expr_Exit`, `Expr_Print`, `Expr_ShellExec`
+- functions: `dd`, `debug_backtrace`, `dump`, `exec`, `passthru`, `phpinfo`, `print_r`, `proc_open`, `shell_exec`, `system`, `var_dump`
+
+`Stmt_Echo` is intentionally not part of defaults, because Blade compiles normal output to `echo`.
+
+You can override/extend this via config:
+
+```neon
+parameters:
+    bladestan:
+        forbidden_node:
+            nodes:
+                -
+                    type: Expr_FuncCall
+                    functions:
+                        - json_encode
+                        - dd
+```
+
+This is useful for enforcing project-specific template conventions.
+
+Set `functions: null` for `Expr_FuncCall` to forbid all function calls in templates.
+
 ### Custom Error Formatter
 
 We provide custom PHPStan error formatter to better display the template errors:

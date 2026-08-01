@@ -1,9 +1,41 @@
 includes:
     - template-compiler/services.neon
 
+parametersSchema:
+    bladestan: structure([
+        forbidden_node: structure([
+            nodes: listOf(mixed()),
+        ]),
+    ])
+
 parameters:
     bootstrapFiles:
         - ../bootstrap.php
+    bladestan:
+        forbidden_node:
+            nodes:
+                -
+                    type: Expr_Eval
+                -
+                    type: Expr_Exit
+                -
+                    type: Expr_FuncCall
+                    functions:
+                        - dd
+                        - debug_backtrace
+                        - dump
+                        - exec
+                        - passthru
+                        - phpinfo
+                        - print_r
+                        - proc_open
+                        - shell_exec
+                        - system
+                        - var_dump
+                -
+                    type: Expr_Print
+                -
+                    type: Expr_ShellExec
 
 rules:
     - Bladestan\Rules\BladeRule
@@ -42,6 +74,12 @@ services:
     - Bladestan\Compiler\BladeToPHPCompiler
     - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
     - Bladestan\PhpParser\ArrayStringToArrayConverter
+    -
+        class: Bladestan\TemplateCompiler\Rules\ForbiddenNodeInTemplateRule
+        arguments:
+            - %bladestan.forbidden_node.nodes%
+        tags:
+            - phpstan.rules.rule
 
     -
         class: Bladestan\PhpParser\NodeVisitor\ViewFunctionArgumentsNodeVisitor
