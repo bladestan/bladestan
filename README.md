@@ -6,18 +6,29 @@ Static analysis for Blade templates in Laravel projects.
 
 ## Install
 
+Bladestan requires a Laravel PHPStan extension to bootstrap the application. Install it with either PHPStan Laravel:
+
 ```bash
-composer require tomasvotruba/bladestan --dev
+composer require calebdw/phpstan-laravel tomasvotruba/bladestan --dev
+```
+
+or Larastan:
+
+```bash
+composer require larastan/larastan tomasvotruba/bladestan --dev
 ```
 
 ## Configure
 
-If you run PHPStan with its [extension installer](https://phpstan.org/user-guide/extension-library#installing-extensions), Bladestan will just work, if not you need to include it in the `phpstan.neon` configuration file:
+If you run PHPStan with its [extension installer](https://phpstan.org/user-guide/extension-library#installing-extensions), Bladestan will just work. Otherwise, include the Laravel PHPStan extension followed by Bladestan in the `phpstan.neon` configuration file:
 
 ```neon
 includes:
+    - ./vendor/calebdw/phpstan-laravel/extension.neon
     - ./vendor/tomasvotruba/bladestan/config/extension.neon
 ```
+
+Use `./vendor/larastan/larastan/extension.neon` instead of the first include when using Larastan.
 
 <br>
 

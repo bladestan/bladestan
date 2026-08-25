@@ -1,0 +1,6 @@
+includes:
+    - ../config/extension.neon
+
+parameters:
+    bootstrapFiles:
+        - ../vendor/larastan/larastan/bootstrap.php

@@ -1,10 +1,6 @@
 includes:
     - template-compiler/services.neon
 
-parameters:
-    bootstrapFiles:
-        - ../bootstrap.php
-
 rules:
     - Bladestan\Rules\BladeRule
 

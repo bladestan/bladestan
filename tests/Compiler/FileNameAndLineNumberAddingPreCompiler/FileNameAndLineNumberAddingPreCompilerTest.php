@@ -85,6 +85,6 @@ final class FileNameAndLineNumberAddingPreCompilerTest extends PHPStanTestCase
 
     public static function getAdditionalConfigFiles(): array
     {
-        return [__DIR__ . '/../../../config/extension.neon'];
+        return [__DIR__ . '/../../extension.neon'];
     }
 }
