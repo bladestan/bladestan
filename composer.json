@@ -14,16 +14,20 @@
         "illuminate/mail": "^11.15|^12.0|^13.0",
         "illuminate/notifications": "^11.15|^12.0|^13.0",
         "illuminate/view": "^11.15|^12.0|^13.0",
-        "larastan/larastan": "^3.0",
         "livewire/livewire": "^3.3.5|^4.0",
         "phpstan/phpstan": "^2.0.1"
     },
     "require-dev": {
+        "larastan/larastan": "^3.0",
         "orchestra/testbench": "^9.9|^10.0|^11.0",
         "phpunit/phpunit": "^11.3.6|^12.5.12",
         "rector/rector": "^2.0",
         "symplify/easy-coding-standard": "^12.1.1|^13.0",
         "tomasvotruba/class-leak": "^2.0"
+    },
+    "suggest": {
+        "calebdw/phpstan-laravel": "Provides Laravel application bootstrapping and PHPStan support",
+        "larastan/larastan": "Provides Laravel application bootstrapping and PHPStan support"
     },
     "autoload": {
         "psr-4": {

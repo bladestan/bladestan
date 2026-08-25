@@ -1,2 +1,2 @@
 includes:
-    - ../../../config/extension.neon
+    - ../../extension.neon
