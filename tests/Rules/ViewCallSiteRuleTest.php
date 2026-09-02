@@ -29,6 +29,14 @@ final class ViewCallSiteRuleTest extends RuleTestCase
         // Correct call site — all parameters provided with matching types
         yield [__DIR__ . '/Fixture/view-call-site-correct.php', []];
 
+        // A template is analysed as itself: PHPStan is handed the compiled form
+        // of the .blade.php file it discovered, and the error comes back on the
+        // template line the @include is written on, with no remapping step in
+        // between.
+        yield [__DIR__ . '/../skeleton/resources/views/include-with-wrong-type.blade.php', [
+            ['Template signed-template expects parameter $title of type string, but int given.', 10],
+        ]];
+
         // Wrong type for $title (int instead of string)
         yield [__DIR__ . '/Fixture/view-call-site-wrong-type.php', [
             ['Template signed-template expects parameter $title of type string, but int given.', 9],

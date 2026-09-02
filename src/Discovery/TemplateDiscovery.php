@@ -73,6 +73,42 @@ final class TemplateDiscovery
     }
 
     /**
+     * The project's own view directories, namespaced hints included.
+     *
+     * These are the directories a user puts in PHPStan's `paths` to have their
+     * templates analysed, so callers can name a missing one rather than
+     * describing it. Directories under `vendor/` are left out: a package's
+     * templates cannot be annotated with a signature and are never compiled, so
+     * they are not something to analyse or to advise adding.
+     *
+     * @return list<string> Absolute real paths, deduplicated
+     */
+    public function getViewRoots(): array
+    {
+        $finder = resolve(ViewFactory::class)->getFinder();
+        assert($finder instanceof FileViewFinder);
+
+        /** @var array<array<string>> $hints */
+        $hints = $finder->getHints();
+
+        $roots = [];
+        foreach ([...$finder->getPaths(), ...array_merge(...array_values($hints) ?: [[]])] as $path) {
+            $realPath = realpath((string) $path);
+            if ($realPath === false) {
+                continue;
+            }
+
+            if (str_contains(str_replace('\\', '/', $realPath), '/vendor/')) {
+                continue;
+            }
+
+            $roots[$realPath] = true;
+        }
+
+        return array_keys($roots);
+    }
+
+    /**
      * @return array<string, string> absoluteFilePath => viewName
      * @throws UnexpectedValueException
      */

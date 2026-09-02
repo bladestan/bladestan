@@ -29,14 +29,3 @@ parameters:
         -
             identifier: missingType.checkedException
             path: tests/*
-        # Exercising a PHPStan ErrorFormatter requires its own test harness
-        # (ErrorFormatterTestCase) and the Error/AnalysisResult value objects,
-        # none of which carry the backward-compatibility promise. This is the
-        # same internal-API usage the formatter itself already inline-ignores,
-        # confined here to the single test that drives it.
-        -
-            identifiers:
-                - phpstanApi.class
-                - phpstanApi.constructor
-                - phpstanApi.method
-            path: tests/ErrorReporting/BladeTemplateErrorFormatterTest.php

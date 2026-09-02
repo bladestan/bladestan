@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Bladestan\Tests\Compiler;
 
-use App\Livewire\WiredComponent;
-use App\View\Components\BackedComponent;
 use Bladestan\Compiler\BladeToPHPCompiler;
 use PHPStan\Testing\PHPStanTestCase;
 
@@ -202,58 +200,6 @@ final class CompileStandaloneTest extends PHPStanTestCase
         );
     }
 
-    public function testCompiledOutputReportsTheComponentClassesItReflected(): void
-    {
-        // The compiled call site is built from the component's own signature, so
-        // the class is a compilation input the template's source hash cannot
-        // see. The output names it, which is how the bootstrap knows to
-        // recompile this template when the component changes shape.
-        $filePath = __DIR__ . '/../skeleton/resources/views/backed-component-with-brackets.blade.php';
-
-        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(
-            realpath($filePath) ?: $filePath,
-            'backed-component-with-brackets',
-        );
-
-        $this->assertSame(
-            [BackedComponent::class],
-            $phpFileContentsWithLineMap->componentClasses,
-        );
-    }
-
-    public function testCompiledOutputReportsRenderedLivewireClasses(): void
-    {
-        $filePath = __DIR__ . '/../skeleton/resources/views/livewire-with-kebab-attributes.blade.php';
-
-        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(
-            realpath($filePath) ?: $filePath,
-            'livewire-with-kebab-attributes',
-        );
-
-        // LivewireTagCompiler reflects mount() the same way, so its class has to
-        // be reported too.
-        $this->assertSame(
-            [WiredComponent::class],
-            $phpFileContentsWithLineMap->componentClasses,
-        );
-    }
-
-    public function testComponentClassesAreNotCarriedOverBetweenCompilations(): void
-    {
-        $this->bladeToPHPCompiler->compileStandalone(
-            (string) realpath(__DIR__ . '/../skeleton/resources/views/backed-component-with-brackets.blade.php'),
-            'backed-component-with-brackets',
-        );
-
-        $filePath = (string) realpath(__DIR__ . '/../skeleton/resources/views/signed-template.blade.php');
-        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone($filePath, 'signed-template');
-
-        // The compiler is a shared service: a template that renders nothing must
-        // not inherit the previous template's classes, or it would recompile
-        // whenever an unrelated component changed.
-        $this->assertSame([], $phpFileContentsWithLineMap->componentClasses);
-    }
-
     public function testLivewireComponentBodyGetsInstanceScope(): void
     {
         $compiled = $this->compileView('livewire.wired-component');
@@ -305,33 +251,6 @@ final class CompileStandaloneTest extends PHPStanTestCase
 
         $this->assertStringNotContainsString('$slot', $compiled);
         $this->assertStringNotContainsString('$componentName', $compiled);
-    }
-
-    public function testDependencyHashDiffersForDifferentComponentScopes(): void
-    {
-        // components.panel is backed by App\View\Components\Panel and its
-        // reflected members feed the dependency hash; components.alert has no
-        // backing class, so the two must land on different hashes.
-        $panelHash = $this->bladeToPHPCompiler->getTemplateDependencyHash(
-            'components.panel',
-            (string) file_get_contents(__DIR__ . '/../skeleton/resources/views/components/panel.blade.php'),
-        );
-        $alertHash = $this->bladeToPHPCompiler->getTemplateDependencyHash(
-            'components.alert',
-            (string) file_get_contents(__DIR__ . '/../skeleton/resources/views/components/alert.blade.php'),
-        );
-
-        $this->assertNotSame($panelHash, $alertHash);
-    }
-
-    public function testDependencyHashIsStableForTheSameInputs(): void
-    {
-        $contents = (string) file_get_contents(__DIR__ . '/../skeleton/resources/views/components/panel.blade.php');
-
-        $this->assertSame(
-            $this->bladeToPHPCompiler->getTemplateDependencyHash('components.panel', $contents),
-            $this->bladeToPHPCompiler->getTemplateDependencyHash('components.panel', $contents),
-        );
     }
 
     public function testCompileFailureIsEmbeddedAsErrorMarker(): void

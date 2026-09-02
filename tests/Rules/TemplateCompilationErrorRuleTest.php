@@ -5,48 +5,56 @@ declare(strict_types=1);
 namespace Bladestan\Tests\Rules;
 
 use Bladestan\Rules\TemplateCompilationErrorRule;
-use Iterator;
 use PHPStan\Rules\Rule;
 use PHPStan\Testing\RuleTestCase;
-use PHPUnit\Framework\Attributes\DataProvider;
 
 /**
  * @extends RuleTestCase<TemplateCompilationErrorRule>
  */
 final class TemplateCompilationErrorRuleTest extends RuleTestCase
 {
-    /**
-     * @param list<array{0: string, 1: int, 2?: string|null}> $expectedErrorsWithLines
-     */
-    #[DataProvider('provideData')]
-    public function testRule(string $analysedFile, array $expectedErrorsWithLines): void
+    private const SKELETON_VIEWS = __DIR__ . '/../skeleton/resources/views';
+
+    public function testReportsATemplateThatCannotBeCompiled(): void
     {
-        $this->analyse([$analysedFile], $expectedErrorsWithLines);
+        // A template Blade itself cannot compile has no statements to analyse,
+        // so it would read as clean without this rule.
+        $this->analyse([self::SKELETON_VIEWS . '/compile-error.blade.php'], [
+            ['View [compile-error.blade.php] contains syntax errors.', 1],
+        ]);
     }
 
-    public static function provideData(): Iterator
+    public function testReportsEveryFailureCollectedForOneTemplate(): void
     {
-        // A parse failure recorded during compilation is surfaced instead of
-        // the template dropping out of analysis silently.
-        yield [__DIR__ . '/Fixture/compiled/parse-error.php', [
-            ['View [broken.blade.php] contains syntax errors.', 1],
-        ]];
+        $this->analyse([self::SKELETON_VIEWS . '/duplicate-signature.blade.php'], [
+            [
+                'Multiple @bladestan-signature docblocks found; a template may declare only one. '
+                    . 'The first is used and the rest are ignored. Remove the extra blocks.',
+                1,
+            ],
+        ]);
+    }
 
-        // Every recorded marker is reported, including a multi-line message.
-        yield [__DIR__ . '/Fixture/compiled/multiple-errors.php', [
-            ['View [partials.missing] not found.', 1],
-            ["Composer for [dashboard] threw:\nboom", 1],
-        ]];
+    public function testATemplateThatCompilesCleanlyProducesNothing(): void
+    {
+        $this->analyse([self::SKELETON_VIEWS . '/signed-template.blade.php'], []);
+    }
 
-        // A compiled file with no error markers produces nothing.
-        yield [__DIR__ . '/Fixture/compiled/clean.php', []];
+    public function testPhpFilesAreIgnored(): void
+    {
+        $this->analyse([__DIR__ . '/Fixture/view-call-site-correct.php'], []);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function getAdditionalConfigFiles(): array
+    {
+        return [__DIR__ . '/config/configured_extension.neon'];
     }
 
     protected function getRule(): Rule
     {
-        // Construct directly with the fixture directory: %currentWorkingDirectory%
-        // resolves to the PHPStan phar during tests, so the container-wired path
-        // could never match the fixtures on disk.
-        return new TemplateCompilationErrorRule(__DIR__ . '/Fixture/compiled');
+        return new TemplateCompilationErrorRule();
     }
 }

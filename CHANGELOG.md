@@ -23,23 +23,29 @@ analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
 - `bladestan:generate-signatures` artisan command to generate signatures from
   existing usage.
 - Errors are now reported directly against the `.blade.php` file and line
-  where they occur, instead of at the `view()` call site, so
-  `--error-format=blade` lists each template as its own entry instead of
-  bucketing several templates' errors under one caller.
+  where they occur, instead of at the `view()` call site, so each template is
+  its own entry instead of several templates' errors being bucketed under one
+  caller. Every error format reports them that way, and so do baselines and
+  `ignoreErrors` entries scoped to a template path.
 - A template that fails to compile is reported as an error against the
   template, instead of dropping out of analysis without a trace.
-- Bladestan warns when `.bladestan` is missing from PHPStan's analysed
-  `paths`, or when a raw view directory is left in `paths` instead; the first
-  warning can be silenced with `parameters.bladestan.reportUnanalysedTemplates: false`.
-- Bladestan reminds you to pass `--error-format=blade` when it sees compiled
-  templates analysed without a chosen error format; the same setting silences
-  this reminder.
+- Bladestan warns when a view directory is missing from PHPStan's analysed
+  `paths`, naming the directory to add; silence it with
+  `parameters.bladestan.reportUnanalysedTemplates: false`.
 - AI agent guidance for writing signatures, discoverable via Laravel Boost.
 
 ### Changed
 
-- `.bladestan` (the compiled template directory) must now be included in
-  PHPStan's analysed `paths`.
+- Your view directory (`resources/views`) must now be included in PHPStan's
+  analysed `paths`. Templates are analysed as themselves, so there is no
+  generated directory to add to `paths` or to `.gitignore`.
+
+### Removed
+
+- The `blade` error format, which existed only to map errors from generated
+  files back to templates. Errors carry the template path and line from the
+  start now, so any format reports them correctly. Regenerate an existing
+  baseline, and drop `--error-format=blade` from scripts and CI.
 
 ### Fixed
 

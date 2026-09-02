@@ -36,32 +36,25 @@ includes:
 
 ## Configure
 
-To have your templates analyzed, add the `.bladestan` directory to your analysed paths. This is where Bladestan writes the compiled templates:
+To have your templates analyzed, add your view directory to PHPStan's analysed paths:
 
 ```neon
 parameters:
     paths:
         - app
-        - .bladestan
+        - resources/views
 ```
 
-Also add it to your `.gitignore`:
+That's it. PHPStan discovers your `.blade.php` files the way it discovers any other file, and Bladestan hands it their compiled form, so a template is analyzed exactly like a PHP file: errors point at the template, the result cache re-analyzes only what a change affects, and parallel workers share the load. There is no generated directory to create, ignore, or keep in sync.
 
-```gitignore
-.bladestan
-```
+The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own. Leave it out and Bladestan tells you which directory is missing, so the mistake doesn't fail silently: call-site validation still works, but template bodies aren't analyzed. Silence that warning with `parameters.bladestan.reportUnanalysedTemplates: false` if it's intentional. Templates inside `vendor/` are skipped, since you can't annotate those anyway.
 
-That's it. Bladestan creates the `.bladestan` directory for you on the first run and writes the compiled templates under `.bladestan/__templates__/`, so there is nothing to set up by hand. Compilation is incremental: each run recompiles only the templates whose source changed, and PHPStan's result cache re-analyzes only the files a change affects. Changing a template's signature is the one coarse case, because PHPStan cannot see which `view()` calls depend on a template, so a signature change re-analyzes everything. That is conservative but correct, and a finer-grained invalidation is planned upstream in PHPStan.
+Changing a template's signature re-analyzes everything, because PHPStan cannot see which `view()` calls depend on a template. That is conservative but correct, and a finer-grained invalidation is planned upstream in PHPStan.
 
-The `paths` entry is required because PHPStan extensions cannot add analysed paths on their own, and it must point at `.bladestan`, not your view directory: `resources/views` holds raw `.blade.php` source, which PHPStan cannot read as PHP. Get either of these wrong and Bladestan warns you directly, so the mistake doesn't fail silently: if `.bladestan` is missing from `paths`, call-site validation still works but template bodies aren't analyzed (silence the warning with `parameters.bladestan.reportUnanalysedTemplates: false` if that's intentional); if a raw view directory ends up in `paths` instead, Bladestan tells you to remove it. Templates inside `vendor/` are never compiled, since you can't annotate those anyway.
-
-Passing paths on the command line (`vendor/bin/phpstan analyse app/Http`) scopes the run to those paths, which leaves templates out of it: nothing is recompiled and no template body is checked, exactly as PHPStan skips every other file you didn't ask for. Run without the paths argument to analyze your templates again.
-
-> [!TIP]
-> In CI, cache the `.bladestan` directory and PHPStan's result cache between runs, the same way you cache `vendor`. Without them each run recompiles every template and analyzes it from scratch; with them, only what changed is redone.
+Passing paths on the command line (`vendor/bin/phpstan analyse app/Http`) scopes the run to those paths, which leaves templates out of it, exactly as PHPStan skips every other file you didn't ask for. Run without the paths argument to analyze your templates again.
 
 > [!NOTE]
-> Because the compiled templates sit under an analysed path, your own custom PHPStan rules run against them too, so a rule you wrote for your PHP now also checks your Blade templates. A rule that assumes hand-written PHP (for example one that forbids `echo`, which compiled Blade uses throughout) can exclude the `.bladestan` path where its findings are not useful.
+> Because templates sit under an analysed path, your own custom PHPStan rules run against them too, so a rule you wrote for your PHP now also checks your Blade templates. A rule that assumes hand-written PHP (for example one that forbids `echo`, which compiled Blade uses throughout) can exclude `*.blade.php` where its findings are not useful.
 
 ## Generate signatures
 
@@ -202,13 +195,9 @@ Livewire component views are analyzed the same way: `$this` and the component's 
 @endphp
 ```
 
-## Error formatter
+## Error output
 
-Errors from templates point directly at the `.blade.php` file with correct line numbers when using the Blade error formatter:
-
-```bash
-vendor/bin/phpstan analyse --error-format=blade
-```
+Errors from templates point at the `.blade.php` file, on the line you wrote, in whatever output format you already use:
 
 ```bash
  ------ -----------------------------------------------
@@ -218,10 +207,10 @@ vendor/bin/phpstan analyse --error-format=blade
  ------ -----------------------------------------------
 ```
 
-Without it, template errors point at the compiled PHP under `.bladestan` instead of your `.blade.php` files, so Bladestan reminds you to pass `--error-format=blade` when it sees compiled templates being analyzed without a chosen format. Selecting any format, on the command line or with the `errorFormat` config parameter, silences the reminder, and so does `parameters.bladestan.reportUnanalysedTemplates: false` if you read the compiled paths on purpose.
+There is no Bladestan-specific formatter to select. The default table, the machine-readable formatters (`json`, `raw`, `checkstyle`, and the rest), your editor's PHPStan integration, and CI annotations all report the template path and line, because that is what PHPStan itself records for the error. The same goes for anything that matches on a path: `--generate-baseline` writes entries against your templates, and an `ignoreErrors` entry scoped to `resources/views/*.blade.php` matches.
 
 > [!NOTE]
-> The `blade` formatter is a human-readable table, so scripting against its output is brittle (long paths wrap across lines). PHPStan's machine-readable formatters (`json`, `raw`, and so on) give one line per error, but they report the compiled `.bladestan` path and line rather than the `.blade.php` source, because the remapping currently lives only in the `blade` formatter. This is the biggest rough edge left in Bladestan today, and fixing it properly means teaching every formatter to remap, which is proposed upstream in PHPStan ([phpstan/phpstan#14912](https://github.com/phpstan/phpstan/issues/14912)).
+> PHPStan's inline ignore comments (`@phpstan-ignore-line` and friends) have no effect inside a template. Blade expands one template line into several lines of PHP, which leaves no reliable way to tell which template line such a comment was meant for, and guessing would silence a line you did not write it for. Use `ignoreErrors` in your config instead; it matches on the template path and message, both of which are exact.
 
 ## Credits
 

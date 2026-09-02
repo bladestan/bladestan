@@ -374,20 +374,20 @@ final class GenerateBladeSignaturesCommand extends Command
     /**
      * The throwaway config that adds the collectors to the project's own config.
      *
-     * The compiled-template directory always needs to be an analysed path: the
-     * compiled templates are where `@include` call sites and the variables each
-     * partial reads come from, so partials reached only through `@include` can
-     * be signed too. How it is added depends on whether `--path` was given:
+     * The view directories always need to be analysed paths: a template is
+     * where its `@include` call sites and the variables each partial reads come
+     * from, so partials reached only through `@include` can be signed too. How
+     * they are added depends on whether `--path` was given:
      *
-     * - Without `--path`, the compiled directory is added under a plain
-     *   `paths:` key, which PHPStan's Neon loader concatenates with (rather
-     *   than replaces) the `paths` already declared in the project's own
-     *   config being included above. The project's own `paths` and
-     *   `excludePaths` (wildcards included) are therefore reused unchanged;
-     *   there is only one list of analysed paths to maintain.
+     * - Without `--path`, they are added under a plain `paths:` key, which
+     *   PHPStan's Neon loader concatenates with (rather than replaces) the
+     *   `paths` already declared in the project's own config being included
+     *   above. The project's own `paths` and `excludePaths` (wildcards
+     *   included) are therefore reused unchanged; there is only one list of
+     *   analysed paths to maintain.
      * - With `--path`, `paths!` replaces the project's analysis paths (the
-     *   `!` overrides the merge) with the given paths plus the
-     *   compiled-template directory, narrowing the scan to just those.
+     *   `!` overrides the merge) with the given paths plus the view
+     *   directories, narrowing the scan to just those.
      *
      * A dedicated `tmpDir` keeps this run's result cache separate from the
      * project's normal one, so neither invalidates the other.
@@ -396,7 +396,7 @@ final class GenerateBladeSignaturesCommand extends Command
      */
     private function buildAnalysisConfig(string $configFile, ?array $scanPaths, string $cacheDir): string
     {
-        $bladestanDir = $this->absolute('.bladestan');
+        $viewRoots = (new TemplateDiscovery())->getViewRoots();
         $fragment = dirname(__DIR__, 2) . '/config/generate-signatures.neon';
 
         $lines = [
@@ -409,13 +409,14 @@ final class GenerateBladeSignaturesCommand extends Command
 
         if ($scanPaths === null) {
             $lines[] = '    paths:';
-            $lines[] = '        - ' . $bladestanDir;
+            foreach ($viewRoots as $viewRoot) {
+                $lines[] = '        - ' . $viewRoot;
+            }
 
             return implode("\n", $lines) . "\n";
         }
 
-        $paths = $scanPaths;
-        $paths[] = $bladestanDir;
+        $paths = [...$scanPaths, ...$viewRoots];
 
         $lines[] = '    paths!:';
         foreach ($paths as $path) {

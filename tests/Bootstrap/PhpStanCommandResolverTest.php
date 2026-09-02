@@ -28,8 +28,8 @@ final class PhpStanCommandResolverTest extends TestCase
     {
         // PHPStan's binary calls setDefaultCommand('analyse'), so this analyses
         // without naming the command. Reading argv[1] saw "--configuration=…"
-        // and skipped compilation, leaving PHPStan to reject its own
-        // configured `.bladestan` path as non-existent.
+        // and read the run as some other command, which silenced the advisories
+        // that are the only signal a view directory is missing from `paths`.
         $this->assertTrue($this->phpStanCommandResolver->isAnalyse(
             ['vendor/bin/phpstan', '--configuration=phpstan.neon', '--no-progress'],
         ));

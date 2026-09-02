@@ -17,8 +17,8 @@ passing different types could produce contradictory errors on the same line
 (one report says a check is always true, another reports the same line as always
 false).
 
-Now each template is compiled once to standalone PHP under `.bladestan` and
-analyzed on its own, using the types it declares in a `@bladestan-signature`.
+Now each template is analyzed on its own, once, using the types it declares in
+a `@bladestan-signature`.
 Call sites (`view()`, `@include`, Mailable content, and so on) are validated
 separately against that same declared contract. The template is the unit of
 analysis, the way a function is, and its signature is its parameter list.
@@ -36,26 +36,19 @@ below work through.
 
 ### Steps
 
-1. **Point PHPStan at `.bladestan`, not your views.** Add the compiled-template
-   directory to your analyzed paths, and add it to `.gitignore`. Do not add
-   `resources/views`: it holds raw Blade, which PHPStan cannot read as PHP.
-   Bladestan will create `.bladestan` for you on the first run.
+1. **Add your view directory to PHPStan's paths.** Templates are analyzed as
+   themselves, so PHPStan has to be looking at them.
 
    ```neon
    parameters:
        paths:
            - app
-           - .bladestan
+           - resources/views
    ```
 
-   ```gitignore
-   .bladestan
-   ```
-
-   If `.bladestan` is missing from `paths`, call-site validation still works but
-   template bodies are not analyzed, and Bladestan omits a warning. If a raw
-   view directory ends up in `paths`, it warns about that too. To run call-site
-   validation only and silence the first warning, set
+   If a view directory is missing from `paths`, call-site validation still works
+   but template bodies are not analyzed, and Bladestan warns you and names the
+   directory. To run call-site validation only and silence that warning, set
    `parameters.bladestan.reportUnanalysedTemplates: false`.
 
 2. **Generate a first pass of signatures.** Instead of writing every signature
@@ -75,15 +68,13 @@ below work through.
 
    Use `--dry-run` to preview and `--force` to overwrite existing signatures.
 
-3. **Read errors against the `.blade.php` file.** Analyze with the Blade error
-   formatter so errors point at the template and line, not the compiled PHP:
-
-   ```bash
-   vendor/bin/phpstan analyse --error-format=blade
-   ```
-
-   Bladestan reminds you to pass this when it sees compiled templates being
-   analyzed without a chosen format.
+3. **Drop `--error-format=blade`.** Errors are reported against the
+   `.blade.php` file and line by every formatter now, so the dedicated Blade
+   formatter has been removed. If your scripts or CI pass
+   `--error-format=blade`, or set `errorFormat: blade` in the config, change it
+   to the format you actually want (or remove it for the default table). An
+   existing baseline should be regenerated, since its entries point at the old
+   compiled paths.
 
 4. **Fill the remaining gaps, then run `generate-signatures` again.**
    Because a partial's types can depend on a signature that's still missing,

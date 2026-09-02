@@ -5,7 +5,4 @@ composer.lock
 # tools
 .phpunit.cache
 
-# compiled blade templates
-.bladestan
-
 .idea

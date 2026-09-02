@@ -160,7 +160,9 @@ final class GenerateBladeSignaturesCommandTest extends PHPStanTestCase
         // `paths:` key is used, never the `paths!` override.
         self::assertStringContainsString("    paths:\n", $config);
         self::assertStringNotContainsString('paths!', $config);
-        self::assertStringContainsString('.bladestan', $config);
+        // The view directories are what carry the @include call sites and the
+        // variables each partial reads, so they always join the scan.
+        self::assertStringContainsString('skeleton/resources/views', $config);
     }
 
     public function testBuildAnalysisConfigOverridesPathsWhenScanPathsAreGiven(): void
@@ -169,11 +171,14 @@ final class GenerateBladeSignaturesCommandTest extends PHPStanTestCase
         self::assertIsString($config);
 
         // Explicit `--path` narrows the scan, so `paths!` replaces the project's
-        // own paths with the given ones plus the compiled-template directory.
+        // own paths with the given ones plus the view directories.
         self::assertStringContainsString('    paths!:', $config);
         self::assertStringContainsString('        - /scan/a', $config);
         self::assertStringContainsString('        - /scan/b', $config);
-        self::assertStringContainsString('.bladestan', $config);
+        self::assertStringContainsString('skeleton/resources/views', $config);
+        // A package's templates are never compiled, so its view directory is
+        // not something to scan.
+        self::assertStringNotContainsString('/vendor/', $config);
     }
 
     public function testApplySignatureWritesToAnUnsignedTemplate(): void

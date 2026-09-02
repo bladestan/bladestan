@@ -39,14 +39,6 @@ use Throwable;
 final class BladeToPHPCompiler
 {
     /**
-     * Version of the compiled standalone output format. Bump to invalidate all
-     * incrementally compiled templates when the generated PHP or the on-disk
-     * output layout changes, so a stale tree from an older scheme is wiped
-     * instead of leaving orphans the per-view prune cannot reach.
-     */
-    private const COMPILED_OUTPUT_VERSION = 1;
-
-    /**
      * @see https://regex101.com/r/B3BbxW/1
      * @var string
      */
@@ -59,27 +51,14 @@ final class BladeToPHPCompiler
     private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
 
     /**
-     * Initialized at declaration, not only in compileStandalone(): the error
-     * sink is also reached by getTemplateDependencyHash() (via getViewDataRaw),
-     * which the bootstrap calls for every template on every run — including a
-     * fully cached run that never enters compileStandalone(). Leaving it
-     * uninitialized there would fatal a throwing composer with "typed property
-     * accessed before initialization".
+     * Failures collected while compiling the current template, reported against
+     * it by TemplateCompilationErrorRule. Initialized at declaration so a
+     * throwing view composer reached outside compileStandalone() cannot fatal
+     * with "typed property accessed before initialization".
      *
      * @var list<array{0: string, 1: string}>
      */
     private array $errors = [];
-
-    /**
-     * Classes of the components rendered by the template being compiled, as a
-     * set keyed by class name. Their signature is reflected into the call sites
-     * written below, so it is a compilation input the template's own source
-     * hash cannot see; the compiled output carries the list out to the caller
-     * for exactly that reason. Reset per compileStandalone().
-     *
-     * @var array<string, true>
-     */
-    private array $referencedComponentClasses = [];
 
     /**
      * @var array<string, Type>
@@ -114,57 +93,6 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * Hash of compilation inputs that aren't derivable from a template's own
-     * source: shared variables (View::share), framework version, and the
-     * compiled-output format itself. The bootstrap manifest uses this to
-     * detect when every template must be recompiled. Bump COMPILED_OUTPUT_VERSION
-     * whenever the shape of the generated PHP changes.
-     */
-    public function getCompilationContextHash(): string
-    {
-        $sharedTypes = [];
-        foreach ($this->shared as $name => $type) {
-            $sharedTypes[$name] = $type->describe(VerbosityLevel::cache());
-        }
-
-        return hash('xxh128', serialize([
-            self::COMPILED_OUTPUT_VERSION,
-            defined('LARAVEL_VERSION') ? LARAVEL_VERSION : '',
-            $sharedTypes,
-        ]));
-    }
-
-    /**
-     * Hash of this template's compilation inputs that live outside its own
-     * source text: the component-body scope (which reflects a backing
-     * component/Livewire class's public members) and any view composer data.
-     * Neither is visible to TemplateCompilationBootstrap's per-file source
-     * hash, since changing `App\View\Components\Panel::$heading` or a
-     * composer's provided value doesn't touch the .blade.php file at all.
-     * The bootstrap calls this on every run, even for a template whose source
-     * is unchanged, and recompiles when it differs from the manifest.
-     *
-     * This covers only the class backing *this* template. The classes of the
-     * components the template *renders* are a compilation input too (their
-     * signature is reflected into the call sites this compiler writes), but
-     * finding them means compiling the template, so they cannot be hashed from
-     * the source alone. The compiled output reports them instead, as
-     * `PhpFileContentsWithLineMap::$componentClasses`, and the bootstrap tracks
-     * their shape through ComponentClassShapeHasher.
-     */
-    public function getTemplateDependencyHash(string $viewName, string $fileContents): string
-    {
-        $componentScope = $this->componentScopeResolver->resolve($viewName, $fileContents);
-
-        $viewDataTypes = [];
-        foreach ($this->getViewData($viewName) as $name => $type) {
-            $viewDataTypes[$name] = $type->describe(VerbosityLevel::cache());
-        }
-
-        return hash('xxh128', serialize([$componentScope, $viewDataTypes]));
-    }
-
-    /**
      * Compile a blade template standalone.
      *
      * @param string $resolvedTemplateFilePath Absolute path to the .blade.php file
@@ -175,7 +103,6 @@ final class BladeToPHPCompiler
         string $viewName,
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
-        $this->referencedComponentClasses = [];
 
         $fileContents = @file_get_contents($resolvedTemplateFilePath);
         if ($fileContents === false) {
@@ -237,7 +164,6 @@ final class BladeToPHPCompiler
             $phpCode,
             $phpLinesToTemplateLines,
             $this->errors,
-            array_keys($this->referencedComponentClasses),
         );
     }
 
@@ -262,16 +188,6 @@ final class BladeToPHPCompiler
         }
 
         return $header;
-    }
-
-    /**
-     * A self-contained compiled shell for a template that threw during
-     * compilation, so it still carries a signal instead of dropping out of
-     * analysis. Valid PHP (comments only), matching the header format above.
-     */
-    public function errorStub(string $resolvedTemplateFilePath, string $message, string $identifier): string
-    {
-        return "<?php\n// @bladestan-source: {$resolvedTemplateFilePath}\n" . $this->errorMarker($message, $identifier);
     }
 
     /**
@@ -357,7 +273,6 @@ final class BladeToPHPCompiler
 
         $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
         foreach ($this->livewireTagCompiler->getReferencedClasses() as $livewireClass) {
-            $this->referencedComponentClasses[$livewireClass] = true;
         }
 
         return $rawPhpContent;
@@ -368,7 +283,6 @@ final class BladeToPHPCompiler
         preg_match_all(self::BACKED_COMPONENT_REGEX, $rawPhpContent, $components, PREG_SET_ORDER);
         foreach ($components as $component) {
             $class = $component[1];
-            $this->referencedComponentClasses[ltrim($class, '\\')] = true;
             $arrayString = trim($component[2], ' ,');
             $attributes = $this->convertComponentData($arrayString, $class);
 

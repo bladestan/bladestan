@@ -6,10 +6,13 @@ namespace Bladestan\PHPStan;
 
 use Bladestan\Compiler\SignatureExtractor;
 use Bladestan\Discovery\BladeFileIterator;
+use Bladestan\Laravel\ApplicationBooter;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\View\FileViewFinder;
 use PHPStan\Analyser\ResultCache\ResultCacheMetaExtension;
 use SplFileInfo;
+use Throwable;
 use UnexpectedValueException;
 
 /**
@@ -39,7 +42,18 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
 
     public function getHash(): string
     {
-        $paths = $this->getViewPaths();
+        try {
+            $paths = $this->getViewPaths();
+        } catch (Throwable) {
+            // No application to ask, so there are no view paths and nothing to
+            // hash. This is the normal state of a project without a bootable
+            // Laravel application, and hashing it as "no templates" keeps such
+            // a project from re-analysing everything on every run. When the
+            // application exists but is broken, PHPStan's own run fails on the
+            // same boot once the bootstrap file executes, and this hash never
+            // gets to matter.
+            $paths = [];
+        }
 
         try {
             $files = $this->discoverBladeFiles($paths);
@@ -64,11 +78,25 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
     }
 
     /**
+     * The directories Laravel resolves views from.
+     *
+     * This runs while PHPStan restores its result cache, which the analyse
+     * command does before it executes any bootstrap file — so unlike every
+     * other place Bladestan asks Laravel a question, there is no application
+     * running yet and one has to be booted here.
+     *
      * @return array<string>
+     * @throws Throwable when no application can be booted
      */
     private function getViewPaths(): array
     {
-        $finder = resolve(ViewFactory::class)->getFinder();
+        $application = ApplicationBooter::boot();
+        if (! $application instanceof Container) {
+            return [];
+        }
+
+        $finder = $application->make(ViewFactory::class)
+            ->getFinder();
         assert($finder instanceof FileViewFinder);
 
         /** @var array<array<string>> $hints */

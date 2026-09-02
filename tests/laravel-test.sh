@@ -23,6 +23,6 @@ composer config repositories.0 '{ "type": "path", "url": "../bladestan", "option
 composer require --dev --optimize-autoloader "tomasvotruba/bladestan:*"
 
 echo "Test Mailbook project"
-# .bladestan on the CLI opts into template-centric analysis: the bootstrap
-# compiles blade templates there and PHPStan analyses them as regular PHP.
-vendor/bin/phpstan analyse src config .bladestan --error-format=blade
+# The view directory is analysed like any other path: PHPStan discovers the
+# .blade.php files and Bladestan hands it their compiled form.
+vendor/bin/phpstan analyse src config resources/views

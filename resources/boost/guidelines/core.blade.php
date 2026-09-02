@@ -37,6 +37,6 @@ error.
   Livewire component's public members are typed automatically. Only add a
   signature to type a prop, or, for a Livewire view resolved under a non-standard
   name, to type the instance: `@var \App\Livewire\Dashboard $this`.
-- Verify with `vendor/bin/phpstan analyse --error-format=blade`, which reports
-  against the `.blade.php` file and line.
+- Verify with `vendor/bin/phpstan analyse`, which reports against the
+  `.blade.php` file and line.
 @endverbatim
