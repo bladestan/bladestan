@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Mail\Mailables\Content;
 use Illuminate\Mail\Message;
 use PhpParser\Node\Expr\New_;
@@ -33,17 +33,30 @@ final class MailablesContentMatcher
             return [];
         }
 
+        // Content's constructor parameters in declaration order, so positional
+        // arguments resolve to the same names as named ones.
+        $constructorParameterNames = ['view', 'html', 'text', 'markdown', 'with', 'htmlString'];
+
         $viewNames = [];
-        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($new, $scope);
-        foreach ($new->getArgs() as $argument) {
-            $argName = (string) $argument->name;
+        $resolvedWith = $this->magicViewWithCallParameterResolver->resolve($new, $scope);
+        $parametersArray = $resolvedWith->parameters;
+        $hasUnresolvedData = ! $resolvedWith->resolved;
+        foreach ($new->getArgs() as $position => $argument) {
+            $argName = $argument->name === null
+                ? ($constructorParameterNames[$position] ?? '')
+                : (string) $argument->name;
             if ($argument->value instanceof String_) {
                 $value = $argument->value->value;
                 if (in_array($argName, ['view', 'html', 'markdown', 'text'], true)) {
                     $viewNames[] = $value;
                 }
             } elseif ($argName === 'with') {
-                $parametersArray = $this->viewDataParametersAnalyzer->resolveParametersArray($argument, $scope);
+                // The with: data complements the ->with() magic calls rather
+                // than replacing them; on a name collision the explicit
+                // constructor data wins.
+                $resolvedParameters = $this->viewDataParametersAnalyzer->resolveParametersArray($argument, $scope);
+                $parametersArray = $resolvedParameters->parameters + $parametersArray;
+                $hasUnresolvedData = $hasUnresolvedData || ! $resolvedParameters->resolved;
             }
         }
 
@@ -53,7 +66,7 @@ final class MailablesContentMatcher
 
         $templates = [];
         foreach ($viewNames as $viewName) {
-            $templates[] = new RenderTemplateWithParameters($viewName, $parametersArray);
+            $templates[] = new RenderTemplateWithParameters($viewName, $parametersArray, false, $hasUnresolvedData);
         }
 
         return $templates;

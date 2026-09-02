@@ -1,35 +1,120 @@
-includes:
-    - template-compiler/services.neon
+parametersSchema:
+    bladestan: structure([
+        reportUnanalysedTemplates: bool()
+    ])
 
 parameters:
+    bladestan:
+        # Warn on stderr when no `.blade.php` file is among the analysed paths,
+        # so a template directory left out of `paths` is a visible
+        # misconfiguration rather than a silent one. Set to false if you only
+        # want view() call-site validation.
+        reportUnanalysedTemplates: true
+
     bootstrapFiles:
         - ../bootstrap.php
 
+    # Noise from constructs Blade emits in a compiled template that a template
+    # author cannot act on. Each entry is pinned to the exact message as well as
+    # the identifier and the `.blade.php` suffix, so a same-identifier error in
+    # hand-written PHP, or with any other wording, still surfaces. A path
+    # starting with `*` is left as an fnmatch pattern rather than resolved
+    # against this config file's directory, and PHP's fnmatch `*` crosses
+    # directory separators, so this matches a template anywhere in the project.
+    ignoreErrors:
+        # A component body is wrapped in a closure that Blade forwards the whole
+        # component scope into ($errors, $__env, $app, $attributes, $componentName,
+        # ...), of which most bodies read only a few.
+        -
+            message: '#^Anonymous function has an unused use \$[^ ]+\.$#'
+            identifier: closure.unusedUse
+            path: *.blade.php
+            reportUnmatched: false
+        # @error('field') compiles to `$__errorArgs[1] ?? 'default'`, reading the
+        # optional error-bag slot that a single-argument @error never sets.
+        -
+            message: '#^Offset 1 on array\{''[^'']*''\} on left side of \?\? does not exist\.$#'
+            identifier: nullCoalesce.offset
+            path: *.blade.php
+            reportUnmatched: false
+        # Blade compiles @props default handling to `$prop = $prop ?? $default`,
+        # whose left side is never nullable once the prop has been extracted
+        # from the attribute bag.
+        -
+            message: '#^Expression on left side of \?\? is not nullable\.$#'
+            identifier: nullCoalesce.expr
+            path: *.blade.php
+            reportUnmatched: false
+        # Blade compiles a prop list without defaults (@props(['a', 'b'])) to a
+        # foreach over array_filter([...], 'is_string', ARRAY_FILTER_USE_KEY),
+        # whose integer keys always leave an empty array.
+        -
+            message: '#^Empty array passed to foreach\.$#'
+            identifier: foreach.emptyArray
+            path: *.blade.php
+            reportUnmatched: false
+        # Blade compiles @props prop extraction to a non-strict in_array($key,
+        # $propNames), which phpstan-strict-rules flags for the missing third
+        # argument. The array is Blade-built, so the author cannot make it strict.
+        -
+            message: '#^Call to function in_array\(\) requires parameter \#3 to be set\.$#'
+            path: *.blade.php
+            reportUnmatched: false
+        # Blade's @props block opens with `$attributes ??= new ComponentAttributeBag()`.
+        # The component scope declares $attributes, so that guard reads as redundant.
+        -
+            message: '#^Variable \$[^ ]+ on left side of \?\?= always exists and is not nullable\.$#'
+            path: *.blade.php
+            reportUnmatched: false
+
 rules:
-    - Bladestan\Rules\BladeRule
+    - Bladestan\Rules\ViewCallSiteRule
 
 services:
-    errorFormatter.blade:
-        class: Bladestan\ErrorReporting\PHPStan\ErrorFormatter\BladeTemplateErrorFormatter
+    -
+        class: Bladestan\Rules\TemplateCompilationErrorRule
+        tags:
+            - phpstan.rules.rule
+
+    -
+        class: Bladestan\Rules\TemplateSignatureMergeRule
+        tags:
+            - phpstan.rules.rule
+
+    # Templates are analysed as themselves: PHPStan discovers a `.blade.php`
+    # file like any other `*.php` file and asks the routing parser for its
+    # statements, which is where the template is compiled. Registering here in
+    # place of PHPStan's own `pathRoutingParser` is the only seam that exists
+    # for handing PHPStan different content for a file; the `!` resets the
+    # definition instead of merging with PHPStan's arguments. Every non-template
+    # file is routed by the original parser, kept below under its own name.
+    pathRoutingParser!:
+        class: Bladestan\PhpParser\BladeTemplateParser
         arguments:
-            simpleRelativePathHelper: @simpleRelativePathHelper
-            showTipsOfTheDay: %tipsOfTheDay%
-            editorUrl: %editorUrl%
-            editorUrlTitle: %editorUrlTitle%
+            wrappedParser: @bladestanInnerPathRoutingParser
+            compiledTemplateParser: @currentPhpVersionRichParser
+        autowired: false
+
+    bladestanInnerPathRoutingParser:
+        class: PHPStan\Parser\PathRoutingParser
+        arguments:
+            currentPhpVersionRichParser: @currentPhpVersionRichParser
+            currentPhpVersionSimpleParser: @currentPhpVersionSimpleParser
+            php8Parser: @php8Parser
+            singleReflectionFile: %singleReflectionFile%
+        autowired: false
 
     - PhpParser\PrettyPrinter\Standard
     - PhpParser\ConstExprEvaluator
-    - Illuminate\Filesystem\Filesystem
 
     - Bladestan\Laravel\View\BladeCompilerFactory
     -
         class: Illuminate\View\Compilers\BladeCompiler
         factory: ['@Bladestan\Laravel\View\BladeCompilerFactory', 'create']
 
-    - Bladestan\ViewRuleHelper
     - Bladestan\Blade\PhpLineToTemplateLineResolver
-    - Bladestan\ErrorReporting\Blade\TemplateErrorsFactory
     - Bladestan\NodeAnalyzer\TemplateFilePathResolver
+    - Bladestan\NodeAnalyzer\RenderSiteMatcher
     - Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher
     - Bladestan\NodeAnalyzer\MailablesContentMatcher
     - Bladestan\NodeAnalyzer\BladeViewMethodsMatcher
@@ -40,8 +125,17 @@ services:
     - Bladestan\NodeAnalyzer\ClassPropertiesResolver
     - Bladestan\NodeAnalyzer\ValueResolver
     - Bladestan\Compiler\BladeToPHPCompiler
+    - Bladestan\Compiler\ComponentScopeResolver
+    - Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
+    - Bladestan\Compiler\LivewireTagCompiler
+    - Bladestan\Compiler\SignatureExtractor
+    - Bladestan\Compiler\SignatureMerger
+    - Bladestan\Compiler\TypeStringValidator
+    - Bladestan\NodeAnalyzer\TemplateVariableTypesResolver
     - Bladestan\PhpParser\NodeVisitor\BladeLineNumberNodeVisitor
     - Bladestan\PhpParser\ArrayStringToArrayConverter
+    - Bladestan\PhpParser\SimplePhpParser
+    - Bladestan\Discovery\TemplateDiscovery
 
     -
         class: Bladestan\PhpParser\NodeVisitor\ViewFunctionArgumentsNodeVisitor

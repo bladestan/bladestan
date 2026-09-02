@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Contracts\Routing\ResponseFactory;
 use Illuminate\Contracts\View\Factory as ViewFactoryContract;
 use Illuminate\Http\Response;
@@ -113,7 +113,9 @@ final class BladeViewMethodsMatcher
 
         $template = $templateNameArg->value->value;
 
-        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($methodCall, $scope);
+        $resolvedWith = $this->magicViewWithCallParameterResolver->resolve($methodCall, $scope);
+        $parametersArray = $resolvedWith->parameters;
+        $hasUnresolvedData = ! $resolvedWith->resolved;
 
         if ($this->isClassWithMessage($calledOnType)) {
             $parametersArray += [
@@ -126,14 +128,16 @@ final class BladeViewMethodsMatcher
         } else {
             $arg = $this->findTemplateDataArgument($methodName, $methodCall);
             if ($arg instanceof Arg) {
-                $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
+                $resolvedParameters = $this->viewDataParametersAnalyzer->resolveParametersArray($arg, $scope);
+                $parametersArray += $resolvedParameters->parameters;
+                $hasUnresolvedData = $hasUnresolvedData || ! $resolvedParameters->resolved;
             }
         }
 
         $nativeReflection = $calledOnType->getObjectClassReflections()[0];
         $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
 
-        return [new RenderTemplateWithParameters($template, $parametersArray)];
+        return [new RenderTemplateWithParameters($template, $parametersArray, false, $hasUnresolvedData)];
     }
 
     private function resolveName(MethodCall $methodCall): ?string
@@ -197,6 +201,14 @@ final class BladeViewMethodsMatcher
         $values = [];
 
         $args = $methodCall->getArgs();
+
+        // renderEach($view, $data, $iterator, $empty) needs at least the view,
+        // data, and iterator name. A malformed call with fewer arguments is a
+        // type error PHPStan reports on its own; deriving loop variables from
+        // the missing arguments here would only crash the run.
+        if (count($args) < 3) {
+            return $values;
+        }
 
         $valueName = null;
         if ($args[2]->value instanceof String_) {

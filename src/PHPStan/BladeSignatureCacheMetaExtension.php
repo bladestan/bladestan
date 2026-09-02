@@ -4,18 +4,37 @@ declare(strict_types=1);
 
 namespace Bladestan\PHPStan;
 
+use Bladestan\Compiler\SignatureExtractor;
+use Bladestan\Discovery\BladeFileIterator;
+use Bladestan\Laravel\ApplicationBooter;
+use Illuminate\Contracts\Container\Container;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\View\FileViewFinder;
 use PHPStan\Analyser\ResultCache\ResultCacheMetaExtension;
-use RecursiveDirectoryIterator;
-use RecursiveIteratorIterator;
-use RecursiveRegexIterator;
-use RegexIterator;
 use SplFileInfo;
+use Throwable;
 use UnexpectedValueException;
 
+/**
+ * Invalidates PHPStan's entire result cache when any template's *contract*
+ * changes: its signature docblock, @extends chain membership, or @props.
+ *
+ * Call sites (view() calls in PHP files and @include call sites in compiled
+ * templates) are validated against these contracts, but PHPStan's dependency
+ * resolver has no way to know a PHP file depends on a blade file — so any
+ * contract change must conservatively invalidate everything.
+ *
+ * Deliberately does NOT hash full template contents: body edits are already
+ * tracked precisely through the compiled file's own hash, and hashing whole
+ * files here would force a full re-analysis on every template edit.
+ */
 final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
 {
+    public function __construct(
+        private readonly SignatureExtractor $signatureExtractor,
+    ) {
+    }
+
     public function getKey(): string
     {
         return 'bladestan-signatures';
@@ -23,7 +42,18 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
 
     public function getHash(): string
     {
-        $paths = $this->getViewPaths();
+        try {
+            $paths = $this->getViewPaths();
+        } catch (Throwable) {
+            // No application to ask, so there are no view paths and nothing to
+            // hash. This is the normal state of a project without a bootable
+            // Laravel application, and hashing it as "no templates" keeps such
+            // a project from re-analysing everything on every run. When the
+            // application exists but is broken, PHPStan's own run fails on the
+            // same boot once the bootstrap file executes, and this hash never
+            // gets to matter.
+            $paths = [];
+        }
 
         try {
             $files = $this->discoverBladeFiles($paths);
@@ -35,19 +65,38 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
         $hashContext = hash_init('xxh128');
 
         foreach ($files as $file) {
+            $contents = @file_get_contents($file);
+            if ($contents === false) {
+                continue;
+            }
+
             hash_update($hashContext, $file);
-            hash_update_file($hashContext, $file);
+            hash_update($hashContext, $this->signatureExtractor->extractSignatureRelevantContent($contents));
         }
 
         return hash_final($hashContext);
     }
 
     /**
+     * The directories Laravel resolves views from.
+     *
+     * This runs while PHPStan restores its result cache, which the analyse
+     * command does before it executes any bootstrap file — so unlike every
+     * other place Bladestan asks Laravel a question, there is no application
+     * running yet and one has to be booted here.
+     *
      * @return array<string>
+     * @throws Throwable when no application can be booted
      */
     private function getViewPaths(): array
     {
-        $finder = resolve(ViewFactory::class)->getFinder();
+        $application = ApplicationBooter::boot();
+        if (! $application instanceof Container) {
+            return [];
+        }
+
+        $finder = $application->make(ViewFactory::class)
+            ->getFinder();
         assert($finder instanceof FileViewFinder);
 
         /** @var array<array<string>> $hints */
@@ -72,12 +121,8 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
                 continue;
             }
 
-            $directory = new RecursiveDirectoryIterator($path);
-            $iterator = new RecursiveIteratorIterator($directory);
-            $regex = new RegexIterator($iterator, '/\.blade\.php$/', RecursiveRegexIterator::MATCH);
-
             /** @var SplFileInfo $fileInfo */
-            foreach ($regex as $fileInfo) {
+            foreach (BladeFileIterator::over($path) as $fileInfo) {
                 $files[] = $fileInfo->getPathname();
             }
         }

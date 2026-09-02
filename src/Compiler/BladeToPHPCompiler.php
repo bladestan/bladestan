@@ -10,49 +10,34 @@ use Bladestan\NodeAnalyzer\ValueResolver;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
-use Bladestan\PhpParser\NodeVisitor\IncludeCollector;
 use Bladestan\PhpParser\NodeVisitor\RemoveLivewireCompilerArtifacts;
 use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
+use Bladestan\PhpParser\NodeVisitor\TransformIncludesToViewCalls;
 use Bladestan\PhpParser\SimplePhpParser;
-use Bladestan\TemplateCompiler\NodeFactory\VarDocNodeFactory;
-use Bladestan\ValueObject\AbstractInlinedElement;
-use Bladestan\ValueObject\ComponentAndVariables;
-use Bladestan\ValueObject\IncludedViewAndVariables;
+use Bladestan\ValueObject\DataCollectingView;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
-use Bladestan\ValueObject\ViewDataCollector;
-use Illuminate\Contracts\Filesystem\FileNotFoundException;
+use Bladestan\ValueObject\TemplateSignature;
 use Illuminate\Contracts\View\Factory as ViewFactory;
-use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\ViewErrorBag;
-use Illuminate\View\AnonymousComponent;
 use Illuminate\View\Compilers\BladeCompiler;
 use InvalidArgumentException;
+use PhpParser\Comment\Doc;
 use PhpParser\Error as ParserError;
 use PhpParser\Node;
+use PhpParser\Node\Stmt\Nop;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
 use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
+use PHPStan\Type\VerbosityLevel;
 use ReflectionClass;
 use ReflectionNamedType;
 use Throwable;
 
 final class BladeToPHPCompiler
 {
-    /**
-     * @see https://regex101.com/r/Fo7sHW/1
-     * @var string
-     */
-    private const COMPONENT_REGEX = '/if \(isset\(\$component\)\).+?\$component = (.*?)::resolve\(.+?\$component->withAttributes\(\[.*?\]\);/s';
-
-    /**
-     * @see https://regex101.com/r/XGSsgA/1
-     * @var string
-     */
-    private const ANONYMOUS_COMPONENT_REGEX = '/Illuminate\\\\View\\\\AnonymousComponent::resolve\(\[\'view\' => \'([^\']+)\', *\'data\' => (\[.*?\])\] \+ \(isset\(\$attributes\)/s';
-
     /**
      * @see https://regex101.com/r/B3BbxW/1
      * @var string
@@ -66,92 +51,161 @@ final class BladeToPHPCompiler
     private const COMPONENT_END_REGEX = '/echo \$__env->renderComponent\(\);.+?unset\(\$__componentOriginal.+?}/s';
 
     /**
-     * Matches a @php ... @endphp block whose docblock contains the @bladestan-signature marker
-     * (a leading description before the marker is fine). Group 1 is the whole block; only blocks
-     * carrying the marker are dropped, so an ordinary @var docblock inside @php keeps working.
-     */
-    private const SIGNATURE_DOCBLOCK_REGEX = '/(@php\s*\n\s*\/\*\*(?:(?!\*\/)[\s\S])*?@bladestan-signature\b[\s\S]*?\*\/\s*\n\s*@endphp)/';
-
-    /**
-     * Matches every import form PHP allows after `use`: plain, `function`, `const`, and an alias.
-     * The excluded characters keep the match away from prose: a quote, parenthesis or semicolon
-     * ends it, so neither a closure's `use ($var)` clause nor the word "use" inside a string
-     * literal is mistaken for an import.
-     */
-    private const IMPORT_REGEX = '/(?<=^|\s)use +(?:function +|const +)?[^ \')(;]+(?: +as +\w+)?;/';
-
-    /**
+     * Failures collected while compiling the current template, reported against
+     * it by TemplateCompilationErrorRule. Initialized at declaration so a
+     * throwing view composer reached outside compileStandalone() cannot fatal
+     * with "typed property accessed before initialization".
+     *
      * @var list<array{0: string, 1: string}>
      */
-    private array $errors;
+    private array $errors = [];
 
     /**
      * @var array<string, Type>
      */
     private readonly array $shared;
 
-    /**
-     * @var array<string, string>
-     */
-    private readonly array $sharedNative;
-
     private readonly ViewFactory $viewFactory;
 
     public function __construct(
-        private readonly Filesystem $fileSystem,
         private readonly BladeCompiler $bladeCompiler,
         private readonly Standard $printerStandard,
         private readonly ValueResolver $valueResolver,
-        private readonly VarDocNodeFactory $varDocNodeFactory,
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
         private readonly LivewireTagCompiler $livewireTagCompiler,
         private readonly SimplePhpParser $simplePhpParser,
+        private readonly SignatureExtractor $signatureExtractor,
+        private readonly ComponentScopeResolver $componentScopeResolver,
+        private readonly TypeStringValidator $typeStringValidator,
     ) {
         $this->viewFactory = resolve(ViewFactory::class);
         $errorClass = ViewErrorBag::class;
         $shared = [
             'errors' => new ObjectType($errorClass),
         ];
-        $sharedNative = [
-            'errors' => "resolve({$errorClass}::class)",
-        ];
         foreach ($this->viewFactory->getShared() as $name => $value) {
             $shared[(string) $name] = $this->valueResolver->resolve($value);
-            $sharedNative[(string) $name] = $this->valueResolver->toNative($value);
         }
 
         $this->shared = $shared;
-        $this->sharedNative = $sharedNative;
     }
 
     /**
-     * @param array<string, Type> $parametersArray
+     * Compile a blade template standalone.
+     *
+     * @param string $resolvedTemplateFilePath Absolute path to the .blade.php file
+     * @param string $viewName Laravel view name (e.g. 'welcome', 'layouts.app')
      */
-    public function compileContent(
+    public function compileStandalone(
         string $resolvedTemplateFilePath,
         string $viewName,
-        string $fileContents,
-        array $parametersArray
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
 
-        $variablesAndTypes = $this->getViewData($viewName)
-            + $parametersArray;
+        $fileContents = @file_get_contents($resolvedTemplateFilePath);
+        if ($fileContents === false) {
+            $this->errors[] = ["Cannot read file: {$resolvedTemplateFilePath}", 'bladestan.io'];
 
-        $phpCode = "<?php\n\n" . $this->inlineInclude(
-            $resolvedTemplateFilePath,
-            $fileContents,
-            array_keys($variablesAndTypes)
-        );
+            return new PhpFileContentsWithLineMap(
+                "<?php\n" . $this->diagnosticHeader($resolvedTemplateFilePath),
+                [],
+                $this->errors,
+            );
+        }
+
+        // Extract signature and strip the signature docblock (explicit or
+        // implicit) so it doesn't survive into the compiled output and
+        // duplicate the @var annotations we emit below. Each strip preserves
+        // line count (the removed block becomes blank lines) so the following
+        // template lines keep their original numbers, which is what the
+        // line-comment pass below reports errors against.
+        $templateSignature = $this->signatureExtractor->extract($fileContents);
+        if ($this->signatureExtractor->countExplicitSignatures($fileContents) > 1) {
+            $this->errors[] = [
+                'Multiple @bladestan-signature docblocks found; a template may declare only one. '
+                . 'The first is used and the rest are ignored. Remove the extra blocks.',
+                'bladestan.signature',
+            ];
+        }
+
+        $fileContents = $this->signatureExtractor->stripSignatureBlock($fileContents, preserveLineCount: true);
+        $fileContents = $this->signatureExtractor->stripImplicitSignatureBlock($fileContents, preserveLineCount: true);
+
+        // Enforced parent requirements at the child's call sites via signature merging.
+        $fileContents = $this->signatureExtractor->stripExtends($fileContents, preserveLineCount: true);
+
+        // Variables Blade injects into a component body ($attributes, $slot,
+        // $componentName, @props). Read before compilation, since compiling
+        // consumes the @props directive. Empty for non-component templates.
+        $componentScope = $this->componentScopeResolver->resolve($viewName, $fileContents);
+
+        // Get view composer data
+        $viewData = $this->getViewData($viewName);
+
+        // Compile blade to PHP. @include directives become view() calls that
+        // ViewCallSiteRule validates against the included template's own signature.
+        $phpCode = "<?php\n\n" . $this->compile($resolvedTemplateFilePath, $fileContents);
         $phpCode = $this->resolveComponents($phpCode);
-        $phpCode = $this->bubbleUpImports($phpCode);
 
-        $phpCode = $this->decoratePhpContent($phpCode, $variablesAndTypes);
+        // Decorate with @var annotations from signature + shared variables
+        $phpCode = $this->decoratePhpContentStandalone($phpCode, $templateSignature, $viewData, $componentScope);
+
+        // Add source tracking header (and any compile-error markers) after the
+        // <?php tag. This runs before the line map is resolved below so the map
+        // accounts for the header lines.
+        $phpCode = preg_replace('/^<\?php\n/', "<?php\n" . $this->diagnosticHeader($resolvedTemplateFilePath), $phpCode)
+            ?? $phpCode;
 
         $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($phpCode);
-        return new PhpFileContentsWithLineMap($phpCode, $phpLinesToTemplateLines, $this->errors);
+
+        return new PhpFileContentsWithLineMap(
+            $phpCode,
+            $phpLinesToTemplateLines,
+            $this->errors,
+        );
+    }
+
+    /**
+     * Build the comment header prepended to every compiled file: the
+     * `@bladestan-source` back-reference plus one `@bladestan-error` marker per
+     * collected compile failure.
+     *
+     * The markers persist the errors that would otherwise be lost once the
+     * compiled PHP is written to disk. A parse failure compiles to an empty
+     * shell that PHPStan analyzes cleanly, so without a durable signal the
+     * template silently drops out of analysis. TemplateCompilationErrorRule
+     * reads these markers back and reports them against the .blade.php file.
+     * The payload is JSON so a multi-line message stays on one comment line.
+     */
+    private function diagnosticHeader(string $resolvedTemplateFilePath): string
+    {
+        $header = "// @bladestan-source: {$resolvedTemplateFilePath}\n";
+
+        foreach ($this->errors as [$message, $identifier]) {
+            $header .= $this->errorMarker($message, $identifier);
+        }
+
+        return $header;
+    }
+
+    /**
+     * One `@bladestan-error` comment marker. The payload is JSON so a multi-line
+     * message stays on a single comment line; TemplateCompilationErrorRule reads
+     * it back and reports it against the .blade.php file.
+     */
+    private function errorMarker(string $message, string $identifier): string
+    {
+        $payload = json_encode([
+            'message' => $message,
+            'identifier' => $identifier,
+        ], JSON_UNESCAPED_SLASHES);
+        if ($payload === false) {
+            return '';
+        }
+
+        return "// @bladestan-error: {$payload}\n";
     }
 
     /**
@@ -170,67 +224,31 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * @return array<string, string>
-     */
-    private function getViewDataNative(string $viewName): array
-    {
-        $data = $this->getViewDataRaw($viewName);
-
-        $viewData = [];
-        foreach ($data as $name => $value) {
-            $viewData[(string) $name] = $this->valueResolver->toNative($value);
-        }
-
-        return $viewData;
-    }
-
-    /**
      * @return array<string, mixed>
      */
     private function getViewDataRaw(string $viewName): array
     {
-        $viewDataCollector = new ViewDataCollector($viewName, $this->viewFactory);
+        $dataCollectingView = new DataCollectingView($viewName, $this->viewFactory);
         try {
             /** @throws Throwable */
-            $this->viewFactory->callComposer($viewDataCollector);
+            $this->viewFactory->callComposer($dataCollectingView);
         } catch (Throwable $throwable) {
             $this->errors[] = [$throwable->getMessage(), 'bladestan.data'];
             return [];
         }
 
-        return $viewDataCollector->getData();
+        return $dataCollectingView->getData();
     }
 
     /**
-     * Replace any @bladestan-signature block with the same number of blank lines, so the marker
-     * never reaches compilation while every following template line keeps its original number.
+     * Compile a single blade template to PHP.
+     * Includes become view() call sites.
      */
-    private function stripSignatureDocblock(string $fileContents): string
+    private function compile(string $filePath, string $fileContents): string
     {
-        return preg_replace_callback(
-            self::SIGNATURE_DOCBLOCK_REGEX,
-            static fn (array $match): string => str_repeat("\n", substr_count($match[1], "\n")),
-            $fileContents
-        ) ?? $fileContents;
-    }
-
-    /**
-     * @param array<string> $allVariablesList
-     */
-    private function inlineInclude(string $filePath, string $fileContents, array $allVariablesList): string
-    {
-        // A @bladestan-signature block declares a template's variable contract for template-centric
-        // analysis. Here types come from the call site instead, so the block carries no meaning;
-        // leaving it in would turn its @var tags into contradictory inline type assertions. Drop it
-        // (keeping the line count intact for error mapping) so a template can already carry that
-        // annotation while still analysing cleanly.
-        $fileContents = $this->stripSignatureDocblock($fileContents);
-
-        // Precompile contents to add template file name and line numbers
         $fileContents = $this->fileNameAndLineNumberAddingPreCompiler
             ->completeLineCommentsToBladeContents($filePath, $fileContents);
 
-        // Extract PHP content from HTML and PHP mixed content
         $rawPhpContent = '';
         try {
             /** @throws InvalidArgumentException */
@@ -242,55 +260,22 @@ final class BladeToPHPCompiler
                 new TransformEach(),
                 new TransformIncludes(),
             ]);
+            // Separate traversal: TransformEach/TransformIncludes produce the
+            // `echo $__env->make(...)->render()` statements this visitor matches.
+            $stmts = $this->traverseNodesWithVisitors($stmts, [new TransformIncludesToViewCalls()]);
             $rawPhpContent = $this->printerStandard->prettyPrint($stmts) . "\n";
         } catch (ParserError) {
-            $filePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
-            $this->errors[] = ["View [{$filePath}] contains syntx errors.", 'bladestan.parsing'];
+            $relativeFilePath = $this->fileNameAndLineNumberAddingPreCompiler->getRelativePath($filePath);
+            $this->errors[] = ["View [{$relativeFilePath}] contains syntax errors.", 'bladestan.parsing'];
         } catch (InvalidArgumentException $invalidArgumentException) {
             $this->errors[] = [$invalidArgumentException->getMessage(), 'bladestan.missing'];
         }
 
         $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
-
-        // Recursively fetch and compile includes
-        foreach ($this->getIncludes($rawPhpContent) as $inlinedElement) {
-            try {
-                /** @throws InvalidArgumentException */
-                $includedFilePath = $this->viewFactory->getFinder()
-                    ->find($inlinedElement->includedViewName);
-                $includedContent = $this->fileSystem->get($includedFilePath);
-            } catch (InvalidArgumentException|FileNotFoundException $exception) {
-                $includedFilePath = '';
-                $includedContent = '';
-                $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
-            }
-
-            $includedContent = $inlinedElement->preprocessTemplate($includedContent, array_keys($this->shared));
-            $includedContent = $this->inlineInclude(
-                $includedFilePath,
-                $includedContent,
-                $inlinedElement->getInnerScopeVariableNames($allVariablesList)
-            );
-
-            $rawPhpContent = str_replace(
-                $inlinedElement->rawPhpContent,
-                $inlinedElement->generateInlineRepresentation($includedContent),
-                $rawPhpContent
-            );
+        foreach ($this->livewireTagCompiler->getReferencedClasses() as $livewireClass) {
         }
 
         return $rawPhpContent;
-    }
-
-    private function bubbleUpImports(string $rawPhpContent): string
-    {
-        preg_match_all(self::IMPORT_REGEX, $rawPhpContent, $imports);
-        foreach ($imports[0] as $import) {
-            $rawPhpContent = str_replace($import, '', $rawPhpContent);
-        }
-
-        $import = implode("\n", array_unique($imports[0]));
-        return str_replace("<?php\n", "<?php\n{$import}", $rawPhpContent);
     }
 
     private function resolveComponents(string $rawPhpContent): string
@@ -367,16 +352,97 @@ final class BladeToPHPCompiler
     }
 
     /**
-     * @param array<string, Type> $variablesAndTypes
+     * Decorate compiled PHP with @var annotations from a TemplateSignature and
+     * component-body scope (both PHPDoc type strings), plus view composer data
+     * and shared variables (PHPStan Type objects).
+     *
+     * Precedence, highest first: the signature (the author's explicit contract),
+     * then the component scope Blade injects, then view composer data, then
+     * shared variables. A name declared by a higher source is not re-emitted.
+     *
+     * @param array<string, Type> $viewData Additional types from view composers
+     * @param array<string, string> $componentScope Variables Blade adds to a component body
      */
-    private function decoratePhpContent(string $phpCode, array $variablesAndTypes): string
-    {
-        $stmts = array_merge(
-            $this->varDocNodeFactory->createDocNodes($variablesAndTypes + $this->shared),
-            $this->simplePhpParser->parse($phpCode),
-        );
+    private function decoratePhpContentStandalone(
+        string $phpCode,
+        TemplateSignature $templateSignature,
+        array $viewData,
+        array $componentScope,
+    ): string {
+        $varNops = [];
+        $declared = [];
+
+        // Emit @var from signature (string-based)
+        foreach ($templateSignature->variables as $name => $type) {
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$type} \${$name} */"));
+            $varNops[] = $nop;
+            $declared[$name] = true;
+        }
+
+        // Emit @var from component-body scope (string-based). The signature wins,
+        // so a variable it declares is not re-emitted.
+        foreach ($componentScope as $name => $type) {
+            if (isset($declared[$name])) {
+                continue;
+            }
+
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$type} \${$name} */"));
+            $varNops[] = $nop;
+            $declared[$name] = true;
+        }
+
+        // Emit @var from view composer data (skip if already declared)
+        foreach ($viewData as $name => $type) {
+            if (isset($declared[$name])) {
+                continue;
+            }
+
+            $typeStr = $this->describeType($type);
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
+            $varNops[] = $nop;
+            $declared[$name] = true;
+        }
+
+        // Emit @var from shared variables (skip if already declared)
+        foreach ($this->shared as $name => $type) {
+            if (isset($declared[$name])) {
+                continue;
+            }
+
+            $typeStr = $this->describeType($type);
+            $nop = new Nop();
+            $nop->setDocComment(new Doc("/** @var {$typeStr} \${$name} */"));
+            $varNops[] = $nop;
+            $declared[$name] = true;
+        }
+
+        $stmts = [...$varNops, ...$this->simplePhpParser->parse($phpCode)];
 
         return $this->printerStandard->prettyPrintFile($stmts) . PHP_EOL;
+    }
+
+    /**
+     * Describe a PHPStan Type as a PHPDoc type string safe to emit into a
+     * compiled `@var`. `describe()` output is not always re-parseable PHPDoc
+     * (an accessory type such as `hasOffsetValue(...)`, an unresolved template
+     * placeholder), and an unparsable type on a header line becomes an
+     * invalid-PHPDoc error against generated code. The precise description is
+     * used when PHPStan's own parser accepts it, then the coarser type-only
+     * one, then `mixed`. Mirrors the signature generator's own fallback.
+     */
+    private function describeType(Type $type): string
+    {
+        foreach ([VerbosityLevel::precise(), VerbosityLevel::typeOnly()] as $verbosityLevel) {
+            $described = $type->describe($verbosityLevel);
+            if ($this->typeStringValidator->isValid($described)) {
+                return $described;
+            }
+        }
+
+        return 'mixed';
     }
 
     /**
@@ -388,78 +454,22 @@ final class BladeToPHPCompiler
     {
         /** @throws ParserError */
         $stmts = $this->simplePhpParser->parse($phpCode);
+
+        return $this->traverseNodesWithVisitors($stmts, $nodeVisitors);
+    }
+
+    /**
+     * @param Node[] $stmts
+     * @param NodeVisitorAbstract[] $nodeVisitors
+     * @return Node[]
+     */
+    private function traverseNodesWithVisitors(array $stmts, array $nodeVisitors): array
+    {
         $nodeTraverser = new NodeTraverser();
         foreach ($nodeVisitors as $nodeVisitor) {
             $nodeTraverser->addVisitor($nodeVisitor);
         }
 
         return $nodeTraverser->traverse($stmts);
-    }
-
-    /**
-     * @return list<AbstractInlinedElement>
-     */
-    private function getIncludes(string $rawPhpCode): array
-    {
-        $return = [];
-
-        try {
-            $includeCollector = new IncludeCollector();
-            $this->traverseStmtsWithVisitors("<?php\n\n" . $rawPhpCode, [$includeCollector]);
-            foreach ($includeCollector->getIncludes() as $include) {
-                $data = $include[2];
-                $extract = null;
-                if (preg_match('#^\$[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $data) === 1) {
-                    $extract = $data;
-                    $data = [];
-                } else {
-                    $data = $this->arrayStringToArrayConverter->convert($data);
-                    // Filter out attributes
-                    $data = array_filter($data, function (string|int $key): bool {
-                        return is_string($key) && preg_match(
-                            '#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s',
-                            $key
-                        ) === 1;
-                    }, ARRAY_FILTER_USE_KEY);
-                }
-
-                $data = $this->getViewDataNative($include[0]) + $data + $this->sharedNative;
-
-                $return[] = new IncludedViewAndVariables($include[0], $include[1], $data, $extract);
-            }
-        } catch (ParserError) {
-        }
-
-        preg_match_all(self::COMPONENT_REGEX, $rawPhpCode, $components, PREG_SET_ORDER);
-        foreach ($components as $component) {
-            if ($component[1] !== AnonymousComponent::class) {
-                continue;
-            }
-
-            preg_match(self::ANONYMOUS_COMPONENT_REGEX, $component[0], $matches);
-
-            $view = $matches[1] ?? '';
-            if ($view === '') {
-                continue;
-            }
-
-            $includeVariables = $matches[2] ?? '[]';
-            $includeVariables = $this->convertComponentData($includeVariables, $view);
-            // Filter out attributes
-            $includeVariables = array_filter($includeVariables, function (string|int $key): bool {
-                return is_string($key) && preg_match('#^[a-zA-Z_\x7f-\xff][a-zA-Z0-9_\x7f-\xff]*$#s', $key) === 1;
-            }, ARRAY_FILTER_USE_KEY);
-
-            $includeVariables = $this->getViewDataNative($view) + $includeVariables + $this->sharedNative;
-
-            $return[] = new ComponentAndVariables(
-                $component[0],
-                $view,
-                $includeVariables,
-                $this->arrayStringToArrayConverter
-            );
-        }
-
-        return $return;
     }
 }

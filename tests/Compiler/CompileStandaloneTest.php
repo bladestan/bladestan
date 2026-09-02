@@ -1,0 +1,301 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Bladestan\Tests\Compiler;
+
+use Bladestan\Compiler\BladeToPHPCompiler;
+use PHPStan\Testing\PHPStanTestCase;
+
+final class CompileStandaloneTest extends PHPStanTestCase
+{
+    private BladeToPHPCompiler $bladeToPHPCompiler;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->bladeToPHPCompiler = self::getContainer()->getByType(BladeToPHPCompiler::class);
+    }
+
+    public function testEmitsSignatureVarsAndStripsSignatureBlock(): void
+    {
+        $compiled = $this->compileView('signed-template');
+
+        $this->assertStringContainsString('/** @var string $title */', $compiled);
+        $this->assertStringContainsString('/** @var \App\Models\User $user */', $compiled);
+        $this->assertStringContainsString('echo e($title);', $compiled);
+        $this->assertStringNotContainsString('@bladestan-signature', $compiled);
+    }
+
+    public function testSignatureStripKeepsOriginalTemplateLineNumbers(): void
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/signed-template.blade.php';
+        $this->assertFileExists($filePath);
+
+        $lineMap = $this->bladeToPHPCompiler
+            ->compileStandalone(realpath($filePath) ?: $filePath, 'signed-template')
+            ->phpToTemplateLines;
+
+        // {{ $title }} sits on template line 9 and {{ $user->email }} on line 10,
+        // below a seven-line signature block. Stripping the block must not shift
+        // them up (it previously reported {{ $title }} as line 2).
+        $templateLines = array_merge(...array_map('array_values', $lineMap));
+        $this->assertContains(9, $templateLines);
+        $this->assertContains(10, $templateLines);
+    }
+
+    public function testImplicitFirstDocblockSignatureIsUsedAndStripped(): void
+    {
+        $compiled = $this->compileView('implicit-signed-template');
+
+        $this->assertStringContainsString('/** @var string $name */', $compiled);
+        $this->assertStringContainsString('/** @var int $age */', $compiled);
+        // The original docblock is stripped — each @var appears exactly once
+        $this->assertSame(1, substr_count($compiled, '@var string $name'));
+    }
+
+    public function testIncludeBecomesViewCallSiteInsteadOfInlining(): void
+    {
+        $compiled = $this->compileView('file_with_include');
+
+        // Blade's scope forwarding is preserved as view()'s $mergeData
+        // parameter, so the rule can let scope variables satisfy the
+        // partial's signature exactly as they do at runtime.
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 10, 'bar' => \$foo . 'bar'], get_defined_vars());",
+            $compiled
+        );
+        // No inlined closure from the old recursive pipeline
+        $this->assertStringNotContainsString('function () {', $compiled);
+    }
+
+    public function testIncludeFirstBecomesViewCallSiteForTheFallbackCandidate(): void
+    {
+        $compiled = $this->compileView('first_include');
+
+        // @includeFirst renders the first candidate that exists; it is validated
+        // against the last (the guaranteed fallback), with the same scope
+        // forwarding as a plain @include so scope variables satisfy its signature.
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 10, 'bar' => 'baz'], get_defined_vars());",
+            $compiled
+        );
+        // The optional override ahead of the fallback is not turned into a call
+        // site of its own, so its signature never false-positives.
+        $this->assertStringNotContainsString("view('partials.override'", $compiled);
+        $this->assertStringNotContainsString('$__env->first', $compiled);
+    }
+
+    public function testIncludeWhenWithDataKeepsScopeForwarding(): void
+    {
+        $compiled = $this->compileView('include_when_with_data');
+
+        // @includeWhen/@includeUnless with explicit data still forward the
+        // surrounding scope, so the compiled view() call must keep both the
+        // explicit data and get_defined_vars(). Dropping the forwarding arg
+        // would make the partial's other signature variables look unprovided.
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 10], get_defined_vars());",
+            $compiled
+        );
+        $this->assertStringContainsString(
+            "view('included_view', ['foo' => 20], get_defined_vars());",
+            $compiled
+        );
+    }
+
+    public function testIncludeWithExplicitFilteredDataKeepsItAsExplicitData(): void
+    {
+        $compiled = $this->compileView('include_with_filtered_data');
+
+        // The explicit second argument is `array_diff_key($all, $except)`, whose
+        // shape matches the compiler-injected scope-forwarding call. It must not
+        // be mistaken for forwarding and dropped: it names its own operands and
+        // is validated as-is, kept alongside the separate forwarded scope.
+        $this->assertStringContainsString(
+            "view('included_view', array_diff_key(\$all, \$except), get_defined_vars());",
+            $compiled
+        );
+    }
+
+    public function testUseStatementsStayInPlaceAndStringLiteralsSurvive(): void
+    {
+        $compiled = $this->compileView('partials.has_use');
+
+        // A use statement from a @php block is kept as-is; each template is a
+        // standalone file, so nothing needs to be hoisted out of it.
+        $this->assertStringContainsString('use My\Name\Space;', $compiled);
+        // A string literal that merely looks like a use statement is not
+        // mistaken for one (the old regex-based hoisting corrupted it).
+        $this->assertStringContainsString("echo e('Please use App\\Foo; thanks');", $compiled);
+    }
+
+    public function testExtendsIsStrippedNotCompiledAsCallSite(): void
+    {
+        $compiled = $this->compileView('extends-template');
+
+        // @extends is enforced via signature merging at the child's call
+        // sites, never compiled into a view() call that would false-positive
+        // on the layout's required parameters.
+        $this->assertStringNotContainsString("view('layouts.base-layout'", $compiled);
+        $this->assertStringNotContainsString('$__env->make', $compiled);
+        // Section content is still analyzed
+        $this->assertStringContainsString('echo e($user->email);', $compiled);
+    }
+
+    public function testComponentBodyGetsBladeInjectedScope(): void
+    {
+        $compiled = $this->compileView('components.alert');
+
+        // $slot, $componentName, and each @props variable are declared so the
+        // body does not report them as undefined.
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentSlot $slot */', $compiled);
+        $this->assertStringContainsString('/** @var string $componentName */', $compiled);
+        $this->assertStringContainsString('/** @var string $type */', $compiled);
+        $this->assertStringContainsString('/** @var mixed $title */', $compiled);
+        $this->assertStringContainsString('/** @var bool $dismissible */', $compiled);
+
+        // $attributes is declared even though @props is present, so the body
+        // stays typed no matter how Blade compiled the @props block.
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
+    }
+
+    public function testPropsComponentWithSignatureKeepsAttributesTyped(): void
+    {
+        $compiled = $this->compileView('components.signed-props');
+
+        // The signature types the props, and $attributes is still declared as
+        // ComponentAttributeBag even though the signature omits it, so the body
+        // does not fall back to reading an untyped $attributes.
+        $this->assertStringContainsString('/** @var string $title */', $compiled);
+        $this->assertStringContainsString('/** @var string $price */', $compiled);
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
+    }
+
+    public function testClassComponentBodyGetsReflectedMembers(): void
+    {
+        $compiled = $this->compileView('components.panel');
+
+        // A public property and a public zero-argument method (as a closure)
+        // from the backing App\View\Components\Panel are declared.
+        $this->assertStringContainsString('/** @var string $heading */', $compiled);
+        $this->assertStringContainsString('/** @var \Closure(): string $badge */', $compiled);
+        // Plus the component scope, since the template declares no @props.
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentSlot $slot */', $compiled);
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
+    }
+
+    public function testBackedComponentTagWithBracketAttributeValueIsNotTruncated(): void
+    {
+        $compiled = $this->compileView('backed-component-with-brackets');
+
+        // The component's data array is located by regex; it used to be anchored
+        // on a bare space, so a value containing "[...] " (e.g. a Tailwind
+        // arbitrary-value class) ended the capture mid-string and the fragment
+        // failed to parse.
+        $this->assertStringContainsString(
+            "new App\View\Components\BackedComponent(b: 'test', panelClass: 'max-h-[80vh] flex flex-col')",
+            $compiled,
+        );
+    }
+
+    public function testLivewireComponentBodyGetsInstanceScope(): void
+    {
+        $compiled = $this->compileView('livewire.wired-component');
+
+        // The component instance is typed under each name Livewire exposes, and
+        // its public property is a plain variable.
+        $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $this */', $compiled);
+        $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $__livewire */', $compiled);
+        $this->assertStringContainsString('/** @var string $c */', $compiled);
+    }
+
+    public function testLivewireTagKebabCaseAttributesAreCamelized(): void
+    {
+        $compiled = $this->compileView('livewire-with-kebab-attributes');
+
+        // Livewire compiles kebab-case tag attributes to kebab-case array keys
+        // as-is and camelizes them at mount(); property assignment must match.
+        $this->assertStringContainsString('$component->accountId = $b;', $compiled);
+        $this->assertStringContainsString("\$component->scopeType = 'account';", $compiled);
+    }
+
+    public function testAliasedLivewireTagUsesTheRegisteredClass(): void
+    {
+        $compiled = $this->compileView('livewire-aliased-component');
+
+        // cart.preview is registered as App\Contexts\Widgets\AliasedWidget, which
+        // sits outside livewire.class_namespace. Rebuilding the class name from
+        // that namespace would emit App\Livewire\Cart\Preview, a class that does
+        // not exist, and turn one working tag into a pile of errors.
+        $this->assertStringContainsString('$component = new App\Contexts\Widgets\AliasedWidget();', $compiled);
+        // mount() is reflected off the resolved class, so its argument is passed.
+        $this->assertStringContainsString('$component->mount(sourceId: $b);', $compiled);
+        $this->assertStringContainsString("\$component->label = 'cart';", $compiled);
+    }
+
+    public function testDynamicLivewireComponentNameIsSkippedInsteadOfAborting(): void
+    {
+        $compiled = $this->compileView('livewire-dynamic-component');
+
+        // A dynamic component name (a variable, not a literal) cannot be
+        // statically resolved, so the block is dropped instead of aborting
+        // analysis of the whole template.
+        $this->assertStringNotContainsString('$component = new', $compiled);
+    }
+
+    public function testNonComponentTemplateGetsNoComponentScope(): void
+    {
+        $compiled = $this->compileView('signed-template');
+
+        $this->assertStringNotContainsString('$slot', $compiled);
+        $this->assertStringNotContainsString('$componentName', $compiled);
+    }
+
+    public function testCompileFailureIsEmbeddedAsErrorMarker(): void
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/broken-heredoc.blade.php';
+        $this->assertFileExists($filePath);
+
+        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(realpath($filePath) ?: $filePath, 'broken-heredoc');
+
+        // The failure is recorded as a structured error and persisted into the
+        // compiled output as a marker, so the template is not silently dropped.
+        $this->assertNotSame([], $phpFileContentsWithLineMap->errors);
+        $this->assertSame('bladestan.parsing', $phpFileContentsWithLineMap->errors[0][1]);
+        $this->assertStringContainsString('// @bladestan-error: ', $phpFileContentsWithLineMap->phpFileContents);
+        $this->assertStringContainsString('"identifier":"bladestan.parsing"', $phpFileContentsWithLineMap->phpFileContents);
+    }
+
+    public function testMultipleSignaturesAreReportedAsAnError(): void
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/duplicate-signature.blade.php';
+        $this->assertFileExists($filePath);
+
+        $phpFileContentsWithLineMap = $this->bladeToPHPCompiler->compileStandalone(realpath($filePath) ?: $filePath, 'duplicate-signature');
+
+        // A template may declare only one signature; the extra block is dead,
+        // so it is reported instead of being silently dropped.
+        $this->assertSame('bladestan.signature', $phpFileContentsWithLineMap->errors[0][1]);
+        $this->assertStringContainsString('Multiple @bladestan-signature docblocks', $phpFileContentsWithLineMap->errors[0][0]);
+        $this->assertStringContainsString('"identifier":"bladestan.signature"', $phpFileContentsWithLineMap->phpFileContents);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function getAdditionalConfigFiles(): array
+    {
+        return [__DIR__ . '/../../config/extension.neon'];
+    }
+
+    private function compileView(string $viewName): string
+    {
+        $filePath = __DIR__ . '/../skeleton/resources/views/' . str_replace('.', '/', $viewName) . '.blade.php';
+        $this->assertFileExists($filePath);
+
+        return $this->bladeToPHPCompiler->compileStandalone(realpath($filePath) ?: $filePath, $viewName)
+            ->phpFileContents;
+    }
+}

@@ -5,6 +5,65 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Analysis is now template-centric: each Blade template compiles once and is
+analysed on its own, against the variables it declares, instead of being
+recompiled and re-analysed at every `view()` call. A template rendered from
+many places is now checked once instead of once per call site, which is
+considerably faster, and two call sites passing different types can no longer
+produce contradictory errors on the same line. A template nothing renders is
+analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
+
+### Added
+
+- Templates declare their expected variables with a `@bladestan-signature`
+  docblock, validated at every `view()`, `View::make()`, `@include`,
+  `@includeFirst`, and Mailable call site.
+- `bladestan:generate-signatures` artisan command to generate signatures from
+  existing usage.
+- Errors are now reported directly against the `.blade.php` file and line
+  where they occur, instead of at the `view()` call site, so each template is
+  its own entry instead of several templates' errors being bucketed under one
+  caller. Every error format reports them that way, and so do baselines and
+  `ignoreErrors` entries scoped to a template path.
+- A template that fails to compile is reported as an error against the
+  template, instead of dropping out of analysis without a trace.
+- Bladestan warns when a view directory is missing from PHPStan's analysed
+  `paths`, naming the directory to add; silence it with
+  `parameters.bladestan.reportUnanalysedTemplates: false`.
+- AI agent guidance for writing signatures, discoverable via Laravel Boost.
+
+### Changed
+
+- Your view directory (`resources/views`) must now be included in PHPStan's
+  analysed `paths`. Templates are analysed as themselves, so there is no
+  generated directory to add to `paths` or to `.gitignore`.
+
+### Removed
+
+- The `blade` error format, which existed only to map errors from generated
+  files back to templates. Errors carry the template path and line from the
+  start now, so any format reports them correctly. Regenerate an existing
+  baseline, and drop `--error-format=blade` from scripts and CI.
+
+### Fixed
+
+- A string literal in a template whose text resembles a `use` statement is no
+  longer corrupted during compilation.
+- A component tag attribute whose value contains a bracket, such as a
+  Tailwind arbitrary-value class, no longer truncates the component's data
+  and fails to compile.
+- A component whose data cannot be parsed is reported as an error against the
+  template instead of aborting analysis with no file attributed.
+- A `<livewire:...>` tag attribute written in kebab-case is camelized to
+  match the property Livewire actually sets at runtime.
+- A `@livewire` or `<livewire:...>` tag with a dynamic component name is
+  skipped instead of aborting analysis of the whole template.
+- A Livewire component is resolved to the class Livewire itself would render,
+  so a component registered outside `livewire.class_namespace` is analysed
+  against the class that actually backs it instead of one that does not exist.
+
 ## [0.11.7] - 2026-07-18
 
 ### Fixed
