@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Bladestan\PHPStan;
 
+use Illuminate\Contracts\Container\BindingResolutionException;
 use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\View\FileViewFinder;
 use PHPStan\Analyser\ResultCache\ResultCacheMetaExtension;
@@ -23,11 +24,12 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
 
     public function getHash(): string
     {
-        $paths = $this->getViewPaths();
-
         try {
+            // PHPStan >= 2.2 calls getHash() before the bootstrapFiles run, so the
+            // Laravel container may not be booted yet and resolve() will fail.
+            $paths = $this->getViewPaths();
             $files = $this->discoverBladeFiles($paths);
-        } catch (UnexpectedValueException) {
+        } catch (UnexpectedValueException | BindingResolutionException) {
             // return a unique hash so the cache is conservatively invalidated.
             return hash('xxh128', microtime());
         }
