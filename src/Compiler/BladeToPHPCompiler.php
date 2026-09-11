@@ -86,6 +86,16 @@ final class BladeToPHPCompiler
     private array $errors;
 
     /**
+     * Template files currently being inlined, outermost first. A template that
+     * includes itself (a tree node rendering its children) or two templates that
+     * include each other would otherwise be inlined without end until the worker
+     * runs out of memory.
+     *
+     * @var list<string>
+     */
+    private array $inlineStack = [];
+
+    /**
      * @var array<string, Type>
      */
     private readonly array $shared;
@@ -136,6 +146,7 @@ final class BladeToPHPCompiler
         array $parametersArray
     ): PhpFileContentsWithLineMap {
         $this->errors = [];
+        $this->inlineStack = [];
 
         $variablesAndTypes = $this->getViewData($viewName)
             + $parametersArray;
@@ -265,12 +276,21 @@ final class BladeToPHPCompiler
                 $this->errors[] = [$exception->getMessage(), 'bladestan.missing'];
             }
 
+            // A recursive include: drop it from the compiled template instead of inlining the
+            // same template into itself again.
+            if ($includedFilePath !== '' && in_array($includedFilePath, $this->inlineStack, true)) {
+                $rawPhpContent = str_replace($inlinedElement->rawPhpContent, '', $rawPhpContent);
+                continue;
+            }
+            $this->inlineStack[] = $includedFilePath;
+
             $includedContent = $inlinedElement->preprocessTemplate($includedContent, array_keys($this->shared));
             $includedContent = $this->inlineInclude(
                 $includedFilePath,
                 $includedContent,
                 $inlinedElement->getInnerScopeVariableNames($allVariablesList)
             );
+            array_pop($this->inlineStack);
 
             $rawPhpContent = str_replace(
                 $inlinedElement->rawPhpContent,

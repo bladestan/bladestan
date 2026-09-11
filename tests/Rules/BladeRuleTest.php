@@ -60,6 +60,16 @@ final class BladeRuleTest extends RuleTestCase
             ['Undefined variable: $bar', 9],
         ]];
 
+        yield [__DIR__ . '/Fixture/file-including-itself.php', [
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+        ]];
+
+        yield [__DIR__ . '/Fixture/file-including-itself-inline.php', [
+            ['Binary operation "+" between \'bar\' and 10 results in an error.', 9],
+            ['Binary operation "+" between string and 10 results in an error.', 9],
+            ['Empty array passed to foreach.', 9],
+        ]];
+
         yield [__DIR__ . '/Fixture/laravel-component-function.php', [
             ['Binary operation "+" between string and 10 results in an error.', 17],
         ]];

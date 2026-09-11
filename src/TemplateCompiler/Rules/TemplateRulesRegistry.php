@@ -19,6 +19,8 @@ final class TemplateRulesRegistry implements Registry
     private const EXCLUDED_RULES = [
         'Symplify\PHPStanRules\Rules\ForbiddenFuncCallRule',
         'Symplify\PHPStanRules\Rules\NoDynamicNameRule',
+        // Includes are already inlined when a compiled template is analysed.
+        'Bladestan\Rules\BladeRule',
     ];
 
     /**
