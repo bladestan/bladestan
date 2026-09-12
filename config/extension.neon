@@ -1,6 +1,11 @@
 parametersSchema:
     bladestan: structure([
         reportUnanalysedTemplates: bool()
+        renderSiteClasses: listOf(structure([
+            class: string()
+            viewNameArg: int()
+            dataArg: int()
+        ]))
     ])
 
 parameters:
@@ -10,6 +15,11 @@ parameters:
         # misconfiguration rather than a silent one. Set to false if you only
         # want view() call-site validation.
         reportUnanalysedTemplates: true
+
+        # Classes that wrap view() behind their own constructor. The template
+        # name is only a parameter inside such a class, so without naming it
+        # here every call site through it is invisible. Subclasses count.
+        renderSiteClasses: []
 
     bootstrapFiles:
         - ../bootstrap.php
@@ -117,6 +127,10 @@ services:
     - Bladestan\NodeAnalyzer\RenderSiteMatcher
     - Bladestan\NodeAnalyzer\LaravelViewFunctionMatcher
     - Bladestan\NodeAnalyzer\MailablesContentMatcher
+    -
+        class: Bladestan\NodeAnalyzer\ConfiguredRenderSiteMatcher
+        arguments:
+            renderSiteClasses: %bladestan.renderSiteClasses%
     - Bladestan\NodeAnalyzer\BladeViewMethodsMatcher
     - Bladestan\NodeAnalyzer\ViewDataParametersAnalyzer
     - Bladestan\NodeAnalyzer\ViewVariableAnalyzer
