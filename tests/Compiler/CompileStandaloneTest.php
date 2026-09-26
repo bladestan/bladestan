@@ -221,6 +221,17 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString("\$component->scopeType = 'account';", $compiled);
     }
 
+    public function testLivewireTagReservedParamsAreNotAssignedAsProperties(): void
+    {
+        $compiled = $this->compileView('livewire-with-reserved-params');
+
+        // lazy / defer configure the tag and are set apart by Livewire before
+        // it maps the rest onto the component, so they are not properties.
+        $this->assertStringNotContainsString('$component->lazy', $compiled);
+        $this->assertStringNotContainsString('$component->defer', $compiled);
+        $this->assertSame(3, substr_count($compiled, '$component->mount(b: $b);'));
+    }
+
     public function testAliasedLivewireTagUsesTheRegisteredClass(): void
     {
         $compiled = $this->compileView('livewire-aliased-component');
