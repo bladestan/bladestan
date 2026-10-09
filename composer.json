@@ -56,6 +56,7 @@
         }
     },
     "scripts": {
+        "post-autoload-dump": "@php vendor/bin/testbench package:discover --ansi",
         "check-cs": "ecs",
         "fix-cs": "ecs --fix",
         "phpstan": "phpstan",
