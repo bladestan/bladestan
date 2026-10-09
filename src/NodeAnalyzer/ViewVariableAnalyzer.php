@@ -4,29 +4,28 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
+use Bladestan\ValueObject\ResolvedParameters;
 use Illuminate\Contracts\Support\Arrayable;
 use PhpParser\Node\Expr;
 use PHPStan\Analyser\Scope;
 use PHPStan\Reflection\ParametersAcceptorSelector;
-use PHPStan\Type\Constant\ConstantIntegerType;
-use PHPStan\Type\Constant\ConstantStringType;
 use PHPStan\Type\ObjectType;
-use PHPStan\Type\Type;
 use ValueError;
 
 final class ViewVariableAnalyzer
 {
     /**
-     * Resolve view function call if the data is a variable.
-     *
-     * @return array<string, Type>
+     * Resolve the view data expression's type to a variable-name-to-type map.
+     * Works for any expression, not just variables: a call's return type, a
+     * ternary's union, and similar are all resolved the same way through
+     * $scope->getType(). The result is unresolved when the expression's type
+     * isn't a single constant array, so the shape (and therefore its variables)
+     * can't be determined, as opposed to a genuinely empty array.
      *
      * @throws ValueError
      */
-    public function resolve(Expr $expr, Scope $scope): array
+    public function resolve(Expr $expr, Scope $scope): ResolvedParameters
     {
-        $parametersArray = [];
-
         $type = $scope->getType($expr);
 
         $objectType = new ObjectType(Arrayable::class);
@@ -42,13 +41,28 @@ final class ViewVariableAnalyzer
         $constantArrays = $type->getConstantArrays();
 
         if (count($constantArrays) !== 1) {
-            return $parametersArray;
+            return new ResolvedParameters([], false);
         }
 
-        $keyTypes = array_map(function (ConstantIntegerType|ConstantStringType $keyType): string {
-            return (string) $keyType->getValue();
-        }, $constantArrays[0]->getKeyTypes());
+        $constantArray = $constantArrays[0];
+        $optionalKeys = $constantArray->getOptionalKeys();
+        $valueTypes = $constantArray->getValueTypes();
 
-        return array_combine($keyTypes, $constantArrays[0]->getValueTypes());
+        // An optional key (`array{user?: User}`) may be absent at runtime, so
+        // it does not satisfy a required signature variable. Dropping it here
+        // lets the missing-parameter check still fire for it, while the result
+        // stays resolved so the guaranteed keys are validated normally.
+        $keyNames = [];
+        $keptValueTypes = [];
+        foreach ($constantArray->getKeyTypes() as $index => $keyType) {
+            if (in_array($index, $optionalKeys, true)) {
+                continue;
+            }
+
+            $keyNames[] = (string) $keyType->getValue();
+            $keptValueTypes[] = $valueTypes[$index];
+        }
+
+        return new ResolvedParameters(array_combine($keyNames, $keptValueTypes));
     }
 }

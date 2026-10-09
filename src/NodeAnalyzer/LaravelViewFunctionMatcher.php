@@ -4,9 +4,11 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\ValueObject\RenderTemplateWithParameters;
+use Bladestan\ValueObject\RenderTemplateWithParameters;
 use Illuminate\Support\Facades\Response as ResponseFacades;
 use Illuminate\Support\Facades\View;
+use Illuminate\View\Component;
+use Livewire\Component as LivewireComponent;
 use PhpParser\Node\Expr\FuncCall;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
@@ -72,17 +74,42 @@ final class LaravelViewFunctionMatcher
 
         $args = $callLike->getArgs();
 
-        $parametersArray = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
+        $resolvedWith = $this->magicViewWithCallParameterResolver->resolve($callLike, $scope);
+        $parametersArray = $resolvedWith->parameters;
+        $hasUnresolvedData = ! $resolvedWith->resolved;
 
-        if (count($args) === 2) {
-            $parametersArray += $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
+        if (count($args) >= 2) {
+            $resolvedParameters = $this->viewDataParametersAnalyzer->resolveParametersArray($args[1], $scope);
+            $parametersArray += $resolvedParameters->parameters;
+            $hasUnresolvedData = $hasUnresolvedData || ! $resolvedParameters->resolved;
         }
 
+        // Only a component's template receives the enclosing class's public
+        // properties: Livewire merges them into the render view, and a class
+        // component's view is rendered with the component's data(). A plain
+        // controller's properties never reach the view, so folding them there
+        // would hide genuinely missing parameters.
         if ($scope->isInClass()) {
-            $nativeReflection = $scope->getClassReflection();
-            $parametersArray += $this->classPropertiesResolver->resolve($nativeReflection, $scope);
+            $classReflection = $scope->getClassReflection();
+            if ($classReflection->is(Component::class) || $classReflection->is(LivewireComponent::class)) {
+                $parametersArray += $this->classPropertiesResolver->resolve($classReflection, $scope);
+            }
         }
 
-        return [new RenderTemplateWithParameters($template->value, $parametersArray)];
+        // view($name, $data, get_defined_vars()) forwards the surrounding
+        // scope as $mergeData — this is what compiled @include calls emit.
+        $forwardsScope = isset($args[2])
+            && $args[2]->value instanceof FuncCall
+            && $args[2]->value->name instanceof Name
+            && $args[2]->value->name->toLowerString() === 'get_defined_vars';
+
+        return [
+            new RenderTemplateWithParameters(
+                $template->value,
+                $parametersArray,
+                $forwardsScope,
+                $hasUnresolvedData,
+            ),
+        ];
     }
 }
