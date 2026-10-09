@@ -5,7 +5,10 @@ declare(strict_types=1);
 namespace Bladestan\Rules;
 
 use Bladestan\Compiler\SignatureMerger;
+use Bladestan\PHPStan\BladeEnvironmentValueExtension;
+use Bladestan\PHPStan\TemplateSignatureValueExtension;
 use PhpParser\Node;
+use PHPStan\Analyser\DependencyTracker;
 use PHPStan\Analyser\Scope;
 use PHPStan\Node\FileNode;
 use PHPStan\Rules\IdentifierRuleError;
@@ -40,6 +43,7 @@ final class TemplateSignatureMergeRule implements Rule
     }
 
     /**
+     * @param Scope&DependencyTracker $scope
      * @return list<IdentifierRuleError>
      */
     public function processNode(Node $node, Scope $scope): array
@@ -49,8 +53,15 @@ final class TemplateSignatureMergeRule implements Rule
             return [];
         }
 
+        $mergedSignature = $this->signatureMerger->mergeForTemplate($filePath);
+
+        // The verdict depends on the contract of every ancestor, and on what
+        // each @extends name resolves to.
+        TemplateSignatureValueExtension::track($scope, $mergedSignature);
+        $scope->trackValueDependency(BladeEnvironmentValueExtension::class, BladeEnvironmentValueExtension::FINDER);
+
         $errors = [];
-        foreach ($this->signatureMerger->mergeForTemplate($filePath)->errors as $mergeError) {
+        foreach ($mergedSignature->errors as $mergeError) {
             // The violation applies to the template as a whole, so it is
             // anchored to its first line rather than to any statement inside it.
             $errors[] = RuleErrorBuilder::message($mergeError)

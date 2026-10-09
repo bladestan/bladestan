@@ -6,7 +6,6 @@ namespace Bladestan\Compiler;
 
 use Bladestan\Blade\PhpLineToTemplateLineResolver;
 use Bladestan\Exception\ShouldNotHappenException;
-use Bladestan\NodeAnalyzer\ValueResolver;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
@@ -15,11 +14,9 @@ use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludesToViewCalls;
 use Bladestan\PhpParser\SimplePhpParser;
-use Bladestan\ValueObject\DataCollectingView;
+use Bladestan\PHPStan\BladeEnvironmentValueExtension;
 use Bladestan\ValueObject\PhpFileContentsWithLineMap;
 use Bladestan\ValueObject\TemplateSignature;
-use Illuminate\Contracts\View\Factory as ViewFactory;
-use Illuminate\Support\ViewErrorBag;
 use Illuminate\View\Compilers\BladeCompiler;
 use InvalidArgumentException;
 use PhpParser\Comment\Doc;
@@ -29,7 +26,6 @@ use PhpParser\Node\Stmt\Nop;
 use PhpParser\NodeTraverser;
 use PhpParser\NodeVisitorAbstract;
 use PhpParser\PrettyPrinter\Standard;
-use PHPStan\Type\ObjectType;
 use PHPStan\Type\Type;
 use PHPStan\Type\VerbosityLevel;
 use ReflectionClass;
@@ -65,12 +61,10 @@ final class BladeToPHPCompiler
      */
     private readonly array $shared;
 
-    private readonly ViewFactory $viewFactory;
-
     public function __construct(
         private readonly BladeCompiler $bladeCompiler,
         private readonly Standard $printerStandard,
-        private readonly ValueResolver $valueResolver,
+        private readonly ViewDataResolver $viewDataResolver,
         private readonly PhpLineToTemplateLineResolver $phpLineToTemplateLineResolver,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
         private readonly FileNameAndLineNumberAddingPreCompiler $fileNameAndLineNumberAddingPreCompiler,
@@ -80,16 +74,7 @@ final class BladeToPHPCompiler
         private readonly ComponentScopeResolver $componentScopeResolver,
         private readonly TypeStringValidator $typeStringValidator,
     ) {
-        $this->viewFactory = resolve(ViewFactory::class);
-        $errorClass = ViewErrorBag::class;
-        $shared = [
-            'errors' => new ObjectType($errorClass),
-        ];
-        foreach ($this->viewFactory->getShared() as $name => $value) {
-            $shared[(string) $name] = $this->valueResolver->resolve($value);
-        }
-
-        $this->shared = $shared;
+        $this->shared = $this->viewDataResolver->shared();
     }
 
     /**
@@ -160,10 +145,25 @@ final class BladeToPHPCompiler
 
         $phpLinesToTemplateLines = $this->phpLineToTemplateLineResolver->resolve($phpCode);
 
+        // Everything besides the template's own source that shaped the output
+        // above. The classes are reflected with native reflection, so PHPStan
+        // only links the template to them if the output happens to name them;
+        // the rest is application configuration PHPStan cannot see at all.
+        $classDependencies = array_values(array_unique([
+            ...$this->componentScopeResolver->getConsultedClasses(),
+            ...$this->livewireTagCompiler->getReferencedClasses(),
+        ]));
+
         return new PhpFileContentsWithLineMap(
             $phpCode,
             $phpLinesToTemplateLines,
             $this->errors,
+            $classDependencies,
+            [
+                BladeEnvironmentValueExtension::COMPILER,
+                BladeEnvironmentValueExtension::SHARED,
+                BladeEnvironmentValueExtension::composerKey($viewName),
+            ],
         );
     }
 
@@ -213,31 +213,12 @@ final class BladeToPHPCompiler
      */
     private function getViewData(string $viewName): array
     {
-        $data = $this->getViewDataRaw($viewName);
-
-        $viewData = [];
-        foreach ($data as $name => $value) {
-            $viewData[(string) $name] = $this->valueResolver->resolve($value);
-        }
-
-        return $viewData;
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
-    private function getViewDataRaw(string $viewName): array
-    {
-        $dataCollectingView = new DataCollectingView($viewName, $this->viewFactory);
         try {
-            /** @throws Throwable */
-            $this->viewFactory->callComposer($dataCollectingView);
+            return $this->viewDataResolver->composed($viewName);
         } catch (Throwable $throwable) {
             $this->errors[] = [$throwable->getMessage(), 'bladestan.data'];
             return [];
         }
-
-        return $dataCollectingView->getData();
     }
 
     /**
@@ -271,11 +252,7 @@ final class BladeToPHPCompiler
             $this->errors[] = [$invalidArgumentException->getMessage(), 'bladestan.missing'];
         }
 
-        $rawPhpContent = $this->livewireTagCompiler->replace($rawPhpContent);
-        foreach ($this->livewireTagCompiler->getReferencedClasses() as $livewireClass) {
-        }
-
-        return $rawPhpContent;
+        return $this->livewireTagCompiler->replace($rawPhpContent);
     }
 
     private function resolveComponents(string $rawPhpContent): string

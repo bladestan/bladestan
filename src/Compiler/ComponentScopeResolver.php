@@ -59,6 +59,17 @@ final class ComponentScopeResolver
 
     private readonly LivewireComponentClassResolver $livewireComponentClassResolver;
 
+    /**
+     * Classes the last resolve() call looked for as a component's backing class,
+     * as a set keyed by class name. Their members are reflected into the scope,
+     * so whoever caches that scope has to recompute it when one of them changes.
+     * A class that does not exist is recorded too: creating it changes the scope
+     * just as much as editing it.
+     *
+     * @var array<string, true>
+     */
+    private array $consultedClasses = [];
+
     public function __construct(
         private readonly BladeCompiler $bladeCompiler,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
@@ -76,6 +87,8 @@ final class ComponentScopeResolver
      */
     public function resolve(string $viewName, string $bladeContent): array
     {
+        $this->consultedClasses = [];
+
         // Livewire component views get $this, $_instance, and $__livewire (all
         // the component instance) plus the component's public properties, which
         // Livewire exposes to the view as plain variables.
@@ -116,6 +129,16 @@ final class ComponentScopeResolver
         // Props are the highest-priority body variables: an explicit @props
         // entry wins over a reflected class member of the same name.
         return [...$scope, ...$this->typesForProps($props)];
+    }
+
+    /**
+     * The classes whose existence or declaration shaped the last resolve() call.
+     *
+     * @return list<string>
+     */
+    public function getConsultedClasses(): array
+    {
+        return array_keys($this->consultedClasses);
     }
 
     /**
@@ -317,6 +340,7 @@ final class ComponentScopeResolver
             explode('.', $componentName),
         );
         $class = trim($namespace, '\\') . '\\' . implode('\\', $pieces);
+        $this->consultedClasses[$class] = true;
 
         if (class_exists($class) && is_subclass_of($class, $baseClass)) {
             /** @var class-string<T> $class */
@@ -343,12 +367,18 @@ final class ComponentScopeResolver
 
         $componentName = substr($viewName, strlen('livewire.'));
 
-        return $this->livewireComponentClassResolver->resolve($componentName)
-            ?? $this->buildComponentClass(
-                $this->livewireClassNamespace(),
-                $componentName,
-                LivewireComponent::class,
-            );
+        $registeredClass = $this->livewireComponentClassResolver->resolve($componentName);
+        if ($registeredClass !== null) {
+            $this->consultedClasses[$registeredClass] = true;
+
+            return $registeredClass;
+        }
+
+        return $this->buildComponentClass(
+            $this->livewireClassNamespace(),
+            $componentName,
+            LivewireComponent::class,
+        );
     }
 
     /**

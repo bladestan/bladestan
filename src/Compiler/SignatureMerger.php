@@ -60,18 +60,18 @@ final class SignatureMerger
 
     private function doMergeForTemplate(string $bladeFilePath): MergedSignature
     {
-        [$chain, $errors] = $this->resolveExtendsChain($bladeFilePath);
+        [$chain, $errors, $templateFiles, $candidateFiles] = $this->resolveExtendsChain($bladeFilePath);
 
         if ($chain === []) {
             // The template became unreadable between resolution and merge
             // (deleted, permissions, a race). Degrade to an empty signature
             // rather than dereferencing a missing chain entry.
-            return new MergedSignature(new TemplateSignature([]), $errors);
+            return new MergedSignature(new TemplateSignature([]), $errors, $templateFiles, $candidateFiles);
         }
 
         if (count($chain) === 1) {
             // No @extends chain — return the template's own signature
-            return new MergedSignature($chain[0]['signature'], $errors);
+            return new MergedSignature($chain[0]['signature'], $errors, $templateFiles, $candidateFiles);
         }
 
         // Merge pairwise from the deepest ancestor up to the child.
@@ -87,7 +87,7 @@ final class SignatureMerger
             $errors = [...$errors, ...$pairErrors];
         }
 
-        return new MergedSignature($merged, $errors);
+        return new MergedSignature($merged, $errors, $templateFiles, $candidateFiles);
     }
 
     /**
@@ -192,15 +192,19 @@ final class SignatureMerger
     /**
      * Walk the @extends chain starting from the given blade file.
      *
-     * @return array{list<array{path: string, signature: TemplateSignature}>, list<string>}
+     * @return array{list<array{path: string, signature: TemplateSignature}>, list<string>, list<string>, list<string>}
      *         The chain (index 0 is the starting template, last index the
-     *         deepest ancestor) and an error for each parent that could not be
-     *         resolved, since its contract then goes unenforced.
+     *         deepest ancestor), an error for each parent that could not be
+     *         resolved, since its contract then goes unenforced, and the files
+     *         the walk depended on: every template it tried to read, and the
+     *         absent files whose creation would resolve a parent differently.
      */
     private function resolveExtendsChain(string $bladeFilePath): array
     {
         $chain = [];
         $errors = [];
+        $templateFiles = [];
+        $candidateFiles = [];
         $currentPath = $bladeFilePath;
         $visited = [];
 
@@ -212,6 +216,7 @@ final class SignatureMerger
             }
 
             $visited[$realPath] = true;
+            $templateFiles[] = $currentPath;
 
             $content = @file_get_contents($currentPath);
             if ($content === false) {
@@ -232,6 +237,11 @@ final class SignatureMerger
             try {
                 $parentPath = $this->templateFilePathResolver->resolveExistingFilePath($parentViewName);
             } catch (InvalidArgumentException) {
+                $candidateFiles = [
+                    ...$candidateFiles,
+                    ...$this->templateFilePathResolver->candidateFilePathsBefore($parentViewName, null),
+                ];
+
                 // The parent's contract cannot be merged, so any variables it
                 // requires go unchecked. Report it rather than degrade silently.
                 $errors[] = sprintf(
@@ -242,9 +252,13 @@ final class SignatureMerger
                 break;
             }
 
+            $candidateFiles = [
+                ...$candidateFiles,
+                ...$this->templateFilePathResolver->candidateFilePathsBefore($parentViewName, $parentPath),
+            ];
             $currentPath = $parentPath;
         }
 
-        return [$chain, $errors];
+        return [$chain, $errors, $templateFiles, $candidateFiles];
     }
 }

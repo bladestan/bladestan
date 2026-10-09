@@ -39,6 +39,10 @@ analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
 - Your view directory (`resources/views`) must now be included in PHPStan's
   analysed `paths`. Templates are analysed as themselves, so there is no
   generated directory to add to `paths` or to `.gitignore`.
+- PHPStan 2.3 or later is now required.
+- Changing a template no longer discards PHPStan's whole result cache. Editing
+  a template's body re-analyses only that template, and changing its signature
+  re-analyses it along with the files that render or extend it.
 
 ### Removed
 
@@ -63,6 +67,10 @@ analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
 - A Livewire component is resolved to the class Livewire itself would render,
   so a component registered outside `livewire.class_namespace` is analysed
   against the class that actually backs it instead of one that does not exist.
+- Changing Blade configuration in a service provider, such as a custom
+  directive, shared view data, or a view composer, now re-analyses the
+  templates it affects instead of leaving their results stale in PHPStan's
+  result cache.
 
 ## [0.11.7] - 2026-07-18
 

@@ -9,10 +9,13 @@ use Bladestan\Compiler\TypeStringValidator;
 use Bladestan\NodeAnalyzer\BladeScopeVariables;
 use Bladestan\NodeAnalyzer\RenderSiteMatcher;
 use Bladestan\NodeAnalyzer\TemplateFilePathResolver;
+use Bladestan\PHPStan\BladeEnvironmentValueExtension;
+use Bladestan\PHPStan\TemplateSignatureValueExtension;
 use Bladestan\ValueObject\RenderTemplateWithParameters;
 use InvalidArgumentException;
 use PhpParser\Node;
 use PhpParser\Node\Expr\CallLike;
+use PHPStan\Analyser\DependencyTracker;
 use PHPStan\Analyser\Scope;
 use PHPStan\Rules\IdentifierRuleError;
 use PHPStan\Rules\Rule;
@@ -50,6 +53,7 @@ final class ViewCallSiteRule implements Rule
     }
 
     /**
+     * @param Scope&DependencyTracker $scope
      * @return list<IdentifierRuleError>
      * @throws ValueError
      */
@@ -64,23 +68,38 @@ final class ViewCallSiteRule implements Rule
     }
 
     /**
+     * @param Scope&DependencyTracker $scope
      * @return list<IdentifierRuleError>
      */
     private function validateCallSite(
         RenderTemplateWithParameters $renderTemplateWithParameters,
         Scope $scope
     ): array {
+        $templateName = $renderTemplateWithParameters->templateName;
+
+        // What the view name resolves to is decided by the view finder's
+        // configuration, so a change there re-analyses this call site.
+        $scope->trackValueDependency(BladeEnvironmentValueExtension::class, BladeEnvironmentValueExtension::FINDER);
+
         // Resolve view name → file path
         try {
-            $bladeFilePath = $this->templateFilePathResolver->resolveExistingFilePath(
-                $renderTemplateWithParameters->templateName,
-            );
+            $bladeFilePath = $this->templateFilePathResolver->resolveExistingFilePath($templateName);
         } catch (InvalidArgumentException $invalidArgumentException) {
+            // Creating any file the finder looked for makes the view exist.
+            foreach ($this->templateFilePathResolver->candidateFilePathsBefore($templateName, null) as $candidate) {
+                $scope->trackFileDependency($candidate);
+            }
+
             return [
                 RuleErrorBuilder::message($invalidArgumentException->getMessage())
                     ->identifier('bladestan.templateNotFound')
                     ->build(),
             ];
+        }
+
+        // Creating a file the finder tries first would shadow the one found.
+        foreach ($this->templateFilePathResolver->candidateFilePathsBefore($templateName, $bladeFilePath) as $candidate) {
+            $scope->trackFileDependency($candidate);
         }
 
         // Validate against the merged signature (the template's own, combined
@@ -90,6 +109,11 @@ final class ViewCallSiteRule implements Rule
         // variable is just as broken as one missing the child's own.
         $mergedSignature = $this->signatureMerger->mergeForTemplate($bladeFilePath);
         $templateSignature = $mergedSignature->signature;
+
+        // This call site is re-analysed when the contract of any template in
+        // the chain changes, and only then: an edit to a template's body leaves
+        // its callers' results alone.
+        TemplateSignatureValueExtension::track($scope, $mergedSignature);
 
         $errors = [];
 

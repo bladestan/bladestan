@@ -9,6 +9,7 @@ use Bladestan\Compiler\BladeToPHPCompiler;
 use Bladestan\Discovery\TemplateDiscovery;
 use Bladestan\Laravel\ApplicationBooter;
 use Bladestan\PhpParser\NodeVisitor\TemplateLineNumberNodeVisitor;
+use Bladestan\PHPStan\BladeEnvironmentValueExtension;
 use PhpParser\Node\Stmt;
 use PhpParser\Node\Stmt\Nop;
 use PhpParser\NodeTraverser;
@@ -44,6 +45,15 @@ final class BladeTemplateParser implements Parser
      * PHPStan's parser cache and is discarded with it.
      */
     public const COMPILATION_ERRORS_ATTRIBUTE = 'bladestanCompilationErrors';
+
+    /**
+     * What the compiled form depends on besides the template's source, read
+     * back by {@see \Bladestan\Rules\TemplateCompilationDependencyRule}, which
+     * declares it to the result cache. A parser has no scope to declare it on,
+     * so it rides on the AST like the compilation errors do, as an array with a
+     * `classes` and an `environment` list.
+     */
+    public const DEPENDENCIES_ATTRIBUTE = 'bladestanCompilationDependencies';
 
     private const TEMPLATE_SUFFIX = '.blade.php';
 
@@ -117,11 +127,17 @@ final class BladeTemplateParser implements Parser
         try {
             return $this->compileAndParse($file);
         } catch (Throwable $throwable) {
+            // Nothing says which input the failure came from, so any of the
+            // application-wide ones may be what fixes it.
             return $this->diagnosticOnly(sprintf(
                 'View [%s] could not be compiled: %s',
                 basename($file),
                 $throwable->getMessage(),
-            ), 'bladestan.compilation');
+            ), 'bladestan.compilation', [
+                BladeEnvironmentValueExtension::FINDER,
+                BladeEnvironmentValueExtension::COMPILER,
+                BladeEnvironmentValueExtension::SHARED,
+            ]);
         }
     }
 
@@ -141,6 +157,7 @@ final class BladeTemplateParser implements Parser
                     basename($file),
                 ),
                 'bladestan.unreachableTemplate',
+                [BladeEnvironmentValueExtension::FINDER],
             );
         }
 
@@ -165,6 +182,15 @@ final class BladeTemplateParser implements Parser
         }
 
         $statements[0]->setAttribute(self::COMPILATION_ERRORS_ATTRIBUTE, $errors);
+
+        // The view name the template compiled under came from the view finder.
+        $statements[0]->setAttribute(self::DEPENDENCIES_ATTRIBUTE, [
+            'classes' => $phpFileContentsWithLineMap->classDependencies,
+            'environment' => [
+                BladeEnvironmentValueExtension::FINDER,
+                ...$phpFileContentsWithLineMap->environmentDependencies,
+            ],
+        ]);
 
         return $statements;
     }
@@ -200,15 +226,20 @@ final class BladeTemplateParser implements Parser
      * drops out of analysis without a trace. One empty statement carrying the
      * failure gives TemplateCompilationErrorRule something to report.
      *
+     * @param list<string> $environmentDependencies the configuration whose change may resolve the failure
      * @return list<Stmt>
      */
-    private function diagnosticOnly(string $message, string $identifier): array
+    private function diagnosticOnly(string $message, string $identifier, array $environmentDependencies): array
     {
         $nop = new Nop();
         $nop->setAttribute(self::COMPILATION_ERRORS_ATTRIBUTE, [[
             'message' => $message,
             'identifier' => $identifier,
         ]]);
+        $nop->setAttribute(self::DEPENDENCIES_ATTRIBUTE, [
+            'classes' => [],
+            'environment' => $environmentDependencies,
+        ]);
 
         return [$nop];
     }

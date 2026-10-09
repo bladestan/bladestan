@@ -79,7 +79,7 @@ class LivewireTagCompiler
 
             $attributes = $this->arrayStringToArrayConverter->convert($match[2]);
             $attributes = collect($attributes)
-                ->reject(fn (string $value, string $key): bool => self::isReservedParam($key))
+                ->reject(fn (string $value, string $key): bool => $this->isReservedParam($key))
                 ->mapWithKeys(fn (string $value, string $key): array => [
                     Str::camel($key) => $value,
                 ])
@@ -154,7 +154,7 @@ class LivewireTagCompiler
      * tag itself and never reach the component as a property or mount() argument. Mirrors
      * HandleComponents::isReservedParam(), matched on the key as written in the tag.
      */
-    private static function isReservedParam(string $key): bool
+    private function isReservedParam(string $key): bool
     {
         return in_array($key, ['lazy', 'defer', 'lazy.bundle', 'defer.bundle', 'wire:ref'], true)
             || str_starts_with($key, '@');

@@ -283,10 +283,10 @@ final class SignatureExtractor
 
     /**
      * Extract the signature-relevant slices of a blade file: the signature
-     * docblock, @extends directives, and @props declarations. Used by the
-     * result-cache meta extension — hashing only these slices means template
-     * *body* edits don't invalidate the whole result cache (those are tracked
-     * via the compiled file's own hash).
+     * docblock, @extends directives, and @props declarations. The result cache
+     * hashes these to tell when the files that render or extend a template have
+     * to be analysed again: hashing only these slices means an edit to a
+     * template's *body* re-analyses only the template itself.
      */
     public function extractSignatureRelevantContent(string $bladeContent): string
     {

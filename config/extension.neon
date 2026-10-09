@@ -81,6 +81,11 @@ services:
         tags:
             - phpstan.rules.rule
 
+    -
+        class: Bladestan\Rules\TemplateCompilationDependencyRule
+        tags:
+            - phpstan.rules.rule
+
     # Templates are analysed as themselves: PHPStan discovers a `.blade.php`
     # file like any other `*.php` file and asks the routing parser for its
     # statements, which is where the template is compiled. Registering here in
@@ -124,6 +129,8 @@ services:
     - Bladestan\NodeAnalyzer\MagicViewWithCallParameterResolver
     - Bladestan\NodeAnalyzer\ClassPropertiesResolver
     - Bladestan\NodeAnalyzer\ValueResolver
+    - Bladestan\Compiler\ViewDataResolver
+    - Bladestan\Laravel\BladeEnvironmentDescriber
     - Bladestan\Compiler\BladeToPHPCompiler
     - Bladestan\Compiler\ComponentScopeResolver
     - Bladestan\Compiler\FileNameAndLineNumberAddingPreCompiler
@@ -142,7 +149,18 @@ services:
         tags:
             - phpstan.parser.richParserNodeVisitor
 
+    # What a file's result depends on besides PHP code PHPStan can see: the
+    # contracts of the templates it renders or extends, and the application
+    # configuration a template was compiled against. The rules declare these
+    # per file, so a change re-analyses only the files that depend on it.
     -
-        class: Bladestan\PHPStan\BladeSignatureCacheMetaExtension
+        class: Bladestan\PHPStan\TemplateSignatureValueExtension
+        arguments:
+            currentWorkingDirectory: %currentWorkingDirectory%
         tags:
-            - phpstan.resultCacheMetaExtension
+            - phpstan.resultCacheValueExtension
+
+    -
+        class: Bladestan\PHPStan\BladeEnvironmentValueExtension
+        tags:
+            - phpstan.resultCacheValueExtension
