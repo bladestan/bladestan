@@ -1,0 +1,10 @@
+includes:
+    - ../../../config/extension.neon
+
+parameters:
+    bladestan:
+        renderSiteClasses:
+            -
+                class: Bladestan\Tests\Rules\Source\SomeViewResponse
+                viewNameArg: 0
+                dataArg: 1
