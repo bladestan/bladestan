@@ -79,6 +79,7 @@ class LivewireTagCompiler
 
             $attributes = $this->arrayStringToArrayConverter->convert($match[2]);
             $attributes = collect($attributes)
+                ->reject(fn (string $value, string $key): bool => self::isReservedParam($key))
                 ->mapWithKeys(fn (string $value, string $key): array => [
                     Str::camel($key) => $value,
                 ])
@@ -146,6 +147,17 @@ class LivewireTagCompiler
         }
 
         return "\$component = new {$class}();{$mount}{$properties}";
+    }
+
+    /**
+     * Livewire's reserved tag parameters (lazy, defer, wire:ref, @event listeners) configure the
+     * tag itself and never reach the component as a property or mount() argument. Mirrors
+     * HandleComponents::isReservedParam(), matched on the key as written in the tag.
+     */
+    private static function isReservedParam(string $key): bool
+    {
+        return in_array($key, ['lazy', 'defer', 'lazy.bundle', 'defer.bundle', 'wire:ref'], true)
+            || str_starts_with($key, '@');
     }
 
     private function getComponentClass(string $view): string
