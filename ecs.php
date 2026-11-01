@@ -14,5 +14,5 @@ return ECSConfig::configure()
             'annotations' => ['author', 'package', 'group', 'covers', 'category'],
         ] // Allow @throws
     )
-    ->withPreparedSets(psr12: true, common: true, symplify: true)
+    ->withPreparedSets(psr12: true, common: true)
     ->withSkip(['*/Fixture/*']);
