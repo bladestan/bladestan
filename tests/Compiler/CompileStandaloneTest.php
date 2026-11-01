@@ -173,6 +173,21 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
     }
 
+    public function testPropsAndAwareVariableVariableLoopsAreRemoved(): void
+    {
+        $compiled = $this->compileView('components.variable-variable-scope');
+
+        // A write through a runtime name makes PHPStan widen every variable in
+        // scope to mixed, so Blade's own @props/@aware loops are dropped and
+        // the declared types survive into the body.
+        $this->assertStringNotContainsString('${$__key}', $compiled);
+        $this->assertStringNotContainsString('${$__consumeVariable}', $compiled);
+        $this->assertStringContainsString('echo e($title);', $compiled);
+
+        // A variable variable the author wrote is still analysed.
+        $this->assertStringContainsString('${$name} = $field;', $compiled);
+    }
+
     public function testClassComponentBodyGetsReflectedMembers(): void
     {
         $compiled = $this->compileView('components.panel');
@@ -209,6 +224,32 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $this */', $compiled);
         $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $__livewire */', $compiled);
         $this->assertStringContainsString('/** @var string $c */', $compiled);
+    }
+
+    public function testDeclaredComponentClassGivesAViewItsComponentScope(): void
+    {
+        // notices.banner is rendered by App\View\Components\Notice, which no
+        // naming convention leads to; the signature names it instead.
+        $compiled = $this->compileView('notices.banner');
+
+        $this->assertStringContainsString('/** @var string $message */', $compiled);
+        $this->assertStringContainsString('/** @var \Closure(): int $level */', $compiled);
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentSlot $slot */', $compiled);
+        $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
+        $this->assertStringNotContainsString('@bladestan-component', $compiled);
+    }
+
+    public function testDeclaredLivewireThisGivesTheWholeLivewireScope(): void
+    {
+        // A Livewire view outside livewire.* gets the instance under every name
+        // Livewire exposes it as, plus its public properties, not just $this.
+        $compiled = $this->compileView('wired.panel');
+
+        $this->assertSame(1, substr_count($compiled, '@var \App\Livewire\WiredComponent $this'));
+        $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $_instance */', $compiled);
+        $this->assertStringContainsString('/** @var \App\Livewire\WiredComponent $__livewire */', $compiled);
+        $this->assertStringContainsString('/** @var string $c */', $compiled);
+        $this->assertStringContainsString('/** @var int $accountId */', $compiled);
     }
 
     public function testLivewireTagKebabCaseAttributesAreCamelized(): void

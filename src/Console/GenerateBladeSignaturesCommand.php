@@ -486,8 +486,11 @@ final class GenerateBladeSignaturesCommand extends Command
 
         // Replace an existing signature rather than prepend a second one, so
         // `--force` regenerates cleanly instead of stacking blocks.
+        // The component class the author named is not something the call sites
+        // can tell, so it is carried over into the new block.
+        $componentClass = $this->signatureExtractor->extractComponentClass($contents);
         $body = $hasSignature ? $this->signatureExtractor->stripSignatureBlock($contents) : $contents;
-        $newContents = $this->buildSignature($payload['variables']) . $body;
+        $newContents = $this->buildSignature($payload['variables'], $componentClass) . $body;
         if ($newContents === $contents) {
             return false;
         }
@@ -502,11 +505,15 @@ final class GenerateBladeSignaturesCommand extends Command
     /**
      * @param array<string, string> $variables
      */
-    private function buildSignature(array $variables): string
+    private function buildSignature(array $variables, ?string $componentClass = null): string
     {
         // blade-formatter indents the PHP inside an @php block by four spaces, so
         // match that here to spare anyone running the formatter a reformat diff.
         $lines = ['@php', '    /**', '     * @bladestan-signature'];
+        if ($componentClass !== null) {
+            $lines[] = '     * @bladestan-component \\' . $componentClass;
+        }
+
         foreach ($variables as $name => $type) {
             $lines[] = '     * @var ' . $type . ' $' . $name;
         }

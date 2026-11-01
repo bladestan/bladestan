@@ -33,6 +33,9 @@ analysed too. See [`UPGRADE.md`](UPGRADE.md) for migrating from 0.11.
   `paths`, naming the directory to add; silence it with
   `parameters.bladestan.reportUnanalysedTemplates: false`.
 - AI agent guidance for writing signatures, discoverable via Laravel Boost.
+- A signature can name the component a view belongs to with
+  `@bladestan-component`, so a component whose `render()` returns a view under
+  another name has its members and slots typed in that view.
 
 ### Changed
 

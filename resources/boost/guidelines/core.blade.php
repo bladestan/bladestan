@@ -35,8 +35,9 @@ error.
   deeper `@include` without using it, declare that variable too.
 - Components need no signature: `$slot`, `$attributes`, `@props`, and a class or
   Livewire component's public members are typed automatically. Only add a
-  signature to type a prop, or, for a Livewire view resolved under a non-standard
-  name, to type the instance: `@var \App\Livewire\Dashboard $this`.
+  signature to type a prop, or, when a component's `render()` returns a view
+  under some other name, to name the component in that view's signature:
+  `@bladestan-component \App\View\Components\Redirect` (Blade or Livewire).
 - Verify with `vendor/bin/phpstan analyse`, which reports against the
   `.blade.php` file and line.
 @endverbatim

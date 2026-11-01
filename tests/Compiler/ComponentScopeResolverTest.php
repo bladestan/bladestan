@@ -6,6 +6,8 @@ namespace Bladestan\Tests\Compiler;
 
 use App\Contexts\Widgets\AliasedWidget;
 use App\Livewire\WiredComponent;
+use App\Models\User;
+use App\View\Components\Panel;
 use Bladestan\Compiler\ComponentScopeResolver;
 use Illuminate\View\ComponentAttributeBag;
 use Illuminate\View\ComponentSlot;
@@ -208,6 +210,69 @@ final class ComponentScopeResolverTest extends PHPStanTestCase
         $scope = $this->componentScopeResolver->resolve('skeleton::panel', '<div>{{ $heading }}</div>');
 
         $this->assertSame('string', $scope['heading'] ?? null);
+    }
+
+    public function testPlainViewUnderAComponentPrefixIsNotAComponent(): void
+    {
+        // "skeleton" is a class-component namespace and a view namespace both,
+        // but its anonymous-component directory is "components". A view outside
+        // that directory with no class behind it is an ordinary view, so it
+        // gets no $slot, $attributes, or $componentName.
+        $this->assertSame([], $this->componentScopeResolver->resolve('skeleton::pages.home', '<h1>{{ $title }}</h1>'));
+        $this->assertSame([], $this->componentScopeResolver->resolve('rooted::pages.home', '<h1>{{ $title }}</h1>'));
+    }
+
+    public function testAnonymousComponentUnderARegisteredViewNamespaceIsAComponent(): void
+    {
+        // No class backs components.card, but it lives in the anonymous
+        // directory, which is what makes it a component.
+        $scope = $this->componentScopeResolver->resolve('skeleton::components.card', '<div>{{ $slot }}</div>');
+
+        $this->assertSame('\\' . ComponentSlot::class, $scope['slot'] ?? null);
+    }
+
+    public function testDeclaredClassComponentWinsOverTheViewName(): void
+    {
+        $scope = $this->componentScopeResolver->resolve('kiosk.redirect', '<div></div>', Panel::class);
+
+        $this->assertSame('string', $scope['heading'] ?? null);
+        $this->assertSame('\\' . ComponentSlot::class, $scope['slot'] ?? null);
+        $this->assertContains(Panel::class, $this->componentScopeResolver->getConsultedClasses());
+        $this->assertSame([], $this->componentScopeResolver->getErrors());
+    }
+
+    public function testDeclaredLivewireClassGetsTheLivewireScope(): void
+    {
+        $scope = $this->componentScopeResolver->resolve('backoffice.create-channel', '<div></div>', WiredComponent::class);
+
+        $this->assertSame('\\' . WiredComponent::class, $scope['_instance'] ?? null);
+        $this->assertSame('string', $scope['c'] ?? null);
+        $this->assertArrayNotHasKey('slot', $scope);
+    }
+
+    public function testDeclaredThisTypeNamingALivewireClassGetsTheLivewireScope(): void
+    {
+        $scope = $this->componentScopeResolver->resolve('backoffice.create-channel', '<div></div>', null, '\\' . WiredComponent::class);
+
+        $this->assertSame('\\' . WiredComponent::class, $scope['__livewire'] ?? null);
+        $this->assertSame('int', $scope['accountId'] ?? null);
+    }
+
+    public function testDeclaredThisTypeNamingAnythingElseChangesNothing(): void
+    {
+        $this->assertSame([], $this->componentScopeResolver->resolve('welcome', '', null, '\\' . Panel::class));
+        $this->assertSame([], $this->componentScopeResolver->resolve('welcome', '', null, '?\\' . WiredComponent::class));
+    }
+
+    public function testDeclaredClassThatIsNotAComponentIsReported(): void
+    {
+        $scope = $this->componentScopeResolver->resolve('welcome', '<h1></h1>', User::class);
+
+        $this->assertSame([], $scope);
+        $this->assertSame(
+            [['@bladestan-component names App\Models\User, which is not a Blade or Livewire component class.', 'bladestan.signature']],
+            $this->componentScopeResolver->getErrors(),
+        );
     }
 
     public function testAliasedLivewireViewGetsTheRegisteredComponentScope(): void

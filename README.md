@@ -184,16 +184,20 @@ Blade components are analyzed like any other template. The variables Blade makes
 
 To type a prop, add a `@bladestan-signature` as usual. It takes precedence over the inferred types, so the body and every call site are checked against the type you declare.
 
-Livewire component views are analyzed the same way: `$this` and the component's public properties are typed from the backing class, so `{{ $this->count }}` and `{{ $someProperty }}` are checked. This works for views resolved by Livewire's naming convention. If a component renders a view under a different name, declare the instance in that view's signature and everything on it is typed:
+Livewire component views are analyzed the same way: `$this` and the component's public properties are typed from the backing class, so `{{ $this->count }}` and `{{ $someProperty }}` are checked.
+
+A component's view is found from its name, following Laravel's and Livewire's naming conventions. When a component's `render()` returns a view under some other name, name the component in that view's signature and the view gets the same scope:
 
 ```blade
 @php
 /**
  * @bladestan-signature
- * @var \App\Livewire\Dashboard $this
+ * @bladestan-component \App\View\Components\Kiosk\Redirect
  */
 @endphp
 ```
+
+This works for Blade and Livewire components alike. For a Livewire view, declaring `@var \App\Livewire\Dashboard $this` in the signature does the same thing. A class named this way that is not a component is reported.
 
 ## Error output
 

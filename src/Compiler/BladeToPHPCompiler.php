@@ -9,6 +9,7 @@ use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
+use Bladestan\PhpParser\NodeVisitor\RemoveBladeVariableVariableLoops;
 use Bladestan\PhpParser\NodeVisitor\RemoveLivewireCompilerArtifacts;
 use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
@@ -107,6 +108,7 @@ final class BladeToPHPCompiler
         // template lines keep their original numbers, which is what the
         // line-comment pass below reports errors against.
         $templateSignature = $this->signatureExtractor->extract($fileContents);
+        $declaredComponentClass = $this->signatureExtractor->extractComponentClass($fileContents);
         if ($this->signatureExtractor->countExplicitSignatures($fileContents) > 1) {
             $this->errors[] = [
                 'Multiple @bladestan-signature docblocks found; a template may declare only one. '
@@ -124,7 +126,13 @@ final class BladeToPHPCompiler
         // Variables Blade injects into a component body ($attributes, $slot,
         // $componentName, @props). Read before compilation, since compiling
         // consumes the @props directive. Empty for non-component templates.
-        $componentScope = $this->componentScopeResolver->resolve($viewName, $fileContents);
+        $componentScope = $this->componentScopeResolver->resolve(
+            $viewName,
+            $fileContents,
+            $declaredComponentClass,
+            $templateSignature->getVariableType('this'),
+        );
+        $this->errors = [...$this->errors, ...$this->componentScopeResolver->getErrors()];
 
         // Get view composer data
         $viewData = $this->getViewData($viewName);
@@ -236,6 +244,7 @@ final class BladeToPHPCompiler
             $compiledBlade = $this->bladeCompiler->compileString($fileContents);
             $stmts = $this->traverseStmtsWithVisitors($compiledBlade, [
                 new RemoveLivewireCompilerArtifacts(),
+                new RemoveBladeVariableVariableLoops(),
                 new DeleteInlineHTML(),
                 new AddLoopVarTypeToForeachNodeVisitor(),
                 new TransformEach(),

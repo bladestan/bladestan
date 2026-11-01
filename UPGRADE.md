@@ -103,8 +103,8 @@ Still needs a signature:
 
 - **Class-backed and Livewire components.** Their public members are typed from
   the backing class automatically, so most need no signature at all. Add one only
-  to type a prop, or to type the instance for a Livewire view resolved under a
-  non-standard name (`@var \App\Livewire\Dashboard $this`).
+  to type a prop, or to name the component for a view its `render()` returns
+  under some other name (`@bladestan-component \App\View\Components\Redirect`).
 - **Anonymous components without `@props`.** A component that reads passed
   attributes as bare variables (`{{ $model }}`) without declaring `@props` has
   nothing for the generator to scaffold from. Add a `@props` declaration, or a

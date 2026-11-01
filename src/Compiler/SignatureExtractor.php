@@ -74,6 +74,12 @@ final class SignatureExtractor
      */
     private const EXTENDS_REGEX = '/@extends\s*\(\s*[\'"]([^\'"]+)[\'"]\s*\)/';
 
+    /**
+     * The signature tag naming the component class whose view a template is,
+     * for a component whose `render()` returns a view its name does not lead to.
+     */
+    private const COMPONENT_TAG = '@bladestan-component';
+
     private readonly Lexer $phpDocLexer;
 
     private readonly PhpDocParser $phpDocParser;
@@ -129,6 +135,25 @@ final class SignatureExtractor
 
         // Priority 3: Empty signature
         return new TemplateSignature([]);
+    }
+
+    /**
+     * The class a template's signature names with `@bladestan-component`,
+     * without a leading backslash, or null when it names none.
+     *
+     * The tag belongs to the signature docblock (explicit, or the implicit
+     * leading one), since it describes the template the same way its `@var`
+     * tags do. It is kept out of {@see TemplateSignature}: it shapes the
+     * template's own body scope, not what a caller has to pass.
+     */
+    public function extractComponentClass(string $bladeContent): ?string
+    {
+        $docblock = $this->signatureDocblock($this->bladeInertRegionMasker->mask($bladeContent));
+        if ($docblock === null) {
+            return null;
+        }
+
+        return $this->componentClassIn($docblock);
     }
 
     /**
@@ -209,8 +234,9 @@ final class SignatureExtractor
 
     /**
      * Strip an implicit first-docblock signature from blade content. Only
-     * strips when the docblock actually carries @var tags (i.e. it was used
-     * as the template's signature); an unrelated leading docblock is kept.
+     * strips when the docblock actually carries @var tags or a
+     * `@bladestan-component` tag (i.e. it was used as the template's
+     * signature); an unrelated leading docblock is kept.
      */
     public function stripImplicitSignatureBlock(string $bladeContent, bool $preserveLineCount = false): string
     {
@@ -218,7 +244,7 @@ final class SignatureExtractor
             return $bladeContent;
         }
 
-        if ($this->extractVarTags($matches[1]) === []) {
+        if (! $this->isImplicitSignatureDocblock($matches[1])) {
             return $bladeContent;
         }
 
@@ -347,6 +373,45 @@ final class SignatureExtractor
         }
 
         return new TemplateSignature($variables, isExplicit: false);
+    }
+
+    /**
+     * The docblock acting as the template's signature: the explicit one, else
+     * a leading docblock that carries signature tags.
+     */
+    private function signatureDocblock(string $maskedContent): ?string
+    {
+        if (preg_match(self::EXPLICIT_SIGNATURE_DOCBLOCK_REGEX, $maskedContent, $matches) === 1) {
+            return $matches[0];
+        }
+
+        if (preg_match(self::FIRST_PHP_DOCBLOCK_REGEX, $maskedContent, $matches) === 1
+            && $this->isImplicitSignatureDocblock($matches[1])
+        ) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
+    private function isImplicitSignatureDocblock(string $docblock): bool
+    {
+        return $this->extractVarTags($docblock) !== [] || $this->componentClassIn($docblock) !== null;
+    }
+
+    private function componentClassIn(string $docblock): ?string
+    {
+        $phpDocNode = $this->phpDocParser->parse(new TokenIterator($this->phpDocLexer->tokenize($docblock)));
+
+        foreach ($phpDocNode->getTagsByName(self::COMPONENT_TAG) as $phpDocTagNode) {
+            // The class name is the first word; anything after it is a description.
+            $class = ltrim(strtok(trim((string) $phpDocTagNode->value), " \t") ?: '', '\\');
+            if ($class !== '') {
+                return $class;
+            }
+        }
+
+        return null;
     }
 
     /**

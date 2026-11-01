@@ -35,10 +35,11 @@ use Throwable;
  * `{{ $slot }}`, `{{ $attributes->merge(...) }}`, or `{{ $order->total }}`
  * reports undefined variables that no signature could fix.
  *
- * A template is treated as a component when it declares `@props` or its view
- * name is a component view (the `components.` convention or a registered
- * component namespace). When the view resolves to a component class, its public
- * members are added too. Types returned here are parser-safe PHPDoc strings.
+ * A template is treated as a component when it declares `@props`, lives in an
+ * anonymous-component directory (the `components.` convention or a registered
+ * anonymous namespace), or resolves to a component class. A resolved class also
+ * contributes its public members. Types returned here are parser-safe PHPDoc
+ * strings.
  *
  * @see \Bladestan\Tests\Compiler\ComponentScopeResolverTest
  */
@@ -70,6 +71,11 @@ final class ComponentScopeResolver
      */
     private array $consultedClasses = [];
 
+    /**
+     * @var list<array{string, string}>
+     */
+    private array $errors = [];
+
     public function __construct(
         private readonly BladeCompiler $bladeCompiler,
         private readonly ArrayStringToArrayConverter $arrayStringToArrayConverter,
@@ -83,29 +89,83 @@ final class ComponentScopeResolver
      * The variables Blade adds to a component body as PHPDoc type strings, or an
      * empty array when the template is not a component.
      *
+     * A component is found from the view name by Laravel's and Livewire's naming
+     * conventions. That cannot see a component whose `render()` returns some
+     * other view, so the template's signature can name the class instead, and
+     * a class it names wins over the convention.
+     *
+     * @param string|null $declaredClass The class the signature names with `@bladestan-component`
+     * @param string|null $thisType The type the signature declares for `$this`, which names a Livewire component's view
      * @return array<string, string>
      */
-    public function resolve(string $viewName, string $bladeContent): array
-    {
+    public function resolve(
+        string $viewName,
+        string $bladeContent,
+        ?string $declaredClass = null,
+        ?string $thisType = null,
+    ): array {
         $this->consultedClasses = [];
+        $this->errors = [];
+
+        $props = $this->extractProps($bladeContent);
+
+        if ($declaredClass !== null) {
+            $this->consultedClasses[$declaredClass] = true;
+
+            if ($this->isLivewireComponent($declaredClass)) {
+                return $this->livewireScope($declaredClass);
+            }
+
+            if (class_exists($declaredClass) && is_subclass_of($declaredClass, Component::class)) {
+                return $this->componentScope($props, $declaredClass);
+            }
+
+            $this->errors[] = [
+                "@bladestan-component names {$declaredClass}, which is not a Blade or Livewire component class.",
+                'bladestan.signature',
+            ];
+        }
 
         // Livewire component views get $this, $_instance, and $__livewire (all
         // the component instance) plus the component's public properties, which
         // Livewire exposes to the view as plain variables.
-        $livewireClass = $this->resolveLivewireClass($viewName);
+        $livewireClass = $this->livewireClassFromThisType($thisType) ?? $this->resolveLivewireClass($viewName);
         if ($livewireClass !== null) {
             return $this->livewireScope($livewireClass);
         }
 
-        $props = $this->extractProps($bladeContent);
-        if ($props === null && ! $this->isComponentView($viewName)) {
+        $backingClass = $this->resolveBackingClass($viewName);
+        if ($props === null && $backingClass === null && ! $this->isUnderComponentDirectory($viewName)) {
             return [];
         }
 
+        return $this->componentScope($props, $backingClass);
+    }
+
+    /**
+     * Problems with the class the last resolve() call was told to use, as
+     * message and identifier pairs.
+     *
+     * @return list<array{string, string}>
+     */
+    public function getErrors(): array
+    {
+        return $this->errors;
+    }
+
+    /**
+     * The scope of a Blade component body: Blade's injected variables, the
+     * backing class's members, and the `@props` variables.
+     *
+     * @param array<string, string|null>|null $props
+     * @param class-string<Component>|null $backingClass
+     * @return array<string, string>
+     */
+    private function componentScope(?array $props, ?string $backingClass): array
+    {
         // Reflected class members are the lowest priority: an explicit @props
         // entry (below) or the template's signature (in the compiler) wins.
         $scope = [];
-        $backingClass = $this->resolveBackingClass($viewName);
         if ($backingClass !== null) {
             $scope = $this->reflectMembers($backingClass);
         }
@@ -217,19 +277,51 @@ final class ComponentScopeResolver
         return $props;
     }
 
-    private function isComponentView(string $viewName): bool
+    /**
+     * Whether the view lives in an anonymous-component directory, which makes it
+     * a component whether or not a class backs it.
+     *
+     * A class-component namespace does not count here. It maps a tag name to a
+     * class and says nothing about the views under a view namespace that happens
+     * to share its prefix, so `webshop::pages.home` is not a component just
+     * because `Blade::componentNamespace(..., 'webshop')` is registered. Such a
+     * view is a component only when a backing class actually resolves.
+     */
+    private function isUnderComponentDirectory(string $viewName): bool
     {
         if (str_starts_with($viewName, 'components.')) {
             return true;
         }
 
-        foreach ($this->componentDirectoriesByPrefix() as $prefix => $directory) {
-            if ($this->componentNamesUnderNamespace($viewName, $prefix, $directory) !== []) {
+        foreach ($this->bladeCompiler->getAnonymousComponentNamespaces() as $prefix => $directory) {
+            if (! is_string($prefix) || ! is_string($directory)) {
+                continue;
+            }
+
+            $directoryPrefix = $this->directoryViewPrefix($directory);
+            if ($directoryPrefix === '') {
+                continue;
+            }
+
+            $rest = str_starts_with($viewName, $prefix . '::')
+                ? substr($viewName, strlen($prefix) + 2)
+                : $viewName;
+            if (str_starts_with($rest, $directoryPrefix . '.')) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * An anonymous-component directory as the bare view-name prefix it puts in
+     * front of a component name. A directory registered as `webshop::components`
+     * is rooted at the view namespace, so the prefix comes off.
+     */
+    private function directoryViewPrefix(string $directory): string
+    {
+        return str_replace('/', '.', trim(Str::afterLast($directory, '::'), '/'));
     }
 
     /**
@@ -310,9 +402,8 @@ final class ComponentScopeResolver
      */
     private function componentNamesUnderNamespace(string $viewName, string $prefix, string $directory): array
     {
-        // A directory registered as `webshop::components` is rooted at the view
-        // namespace, so match it against the remainder, which is already bare.
-        $directoryPrefix = str_replace('/', '.', trim(Str::afterLast($directory, '::'), '/'));
+        // Matched against the remainder, which is already bare of the namespace.
+        $directoryPrefix = $this->directoryViewPrefix($directory);
 
         if (! str_starts_with($viewName, $prefix . '::')) {
             return $directoryPrefix !== '' && str_starts_with($viewName, $directoryPrefix . '.')
@@ -379,6 +470,35 @@ final class ComponentScopeResolver
             $componentName,
             LivewireComponent::class,
         );
+    }
+
+    /**
+     * The Livewire component a signature's `$this` type names, when it names
+     * one plain class. Declaring `$this` is how a view rendered under a name
+     * other than `livewire.*` says whose view it is, so it gets the whole
+     * Livewire scope and not only the typed `$this`.
+     *
+     * @return class-string<LivewireComponent>|null
+     */
+    private function livewireClassFromThisType(?string $thisType): ?string
+    {
+        if ($thisType === null || preg_match('/^\\\\?([A-Za-z_][A-Za-z0-9_]*(?:\\\\[A-Za-z_][A-Za-z0-9_]*)*)$/', $thisType, $matches) !== 1) {
+            return null;
+        }
+
+        $this->consultedClasses[$matches[1]] = true;
+
+        return $this->isLivewireComponent($matches[1]) ? $matches[1] : null;
+    }
+
+    /**
+     * @phpstan-assert-if-true class-string<LivewireComponent> $class
+     */
+    private function isLivewireComponent(string $class): bool
+    {
+        return class_exists(LivewireComponent::class)
+            && class_exists($class)
+            && is_subclass_of($class, LivewireComponent::class);
     }
 
     /**

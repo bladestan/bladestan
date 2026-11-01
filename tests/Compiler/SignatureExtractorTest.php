@@ -133,6 +133,42 @@ final class SignatureExtractorTest extends TestCase
         $this->assertTrue($templateSignature->isEmpty());
     }
 
+    public function testExtractComponentClassFromExplicitSignature(): void
+    {
+        $bladeContent = <<<'BLADE'
+            @php
+            /**
+             * @bladestan-signature
+             * @bladestan-component \App\View\Components\Notice rendered by Notice::render()
+             * @var string $title
+             */
+            @endphp
+            BLADE;
+
+        $this->assertSame('App\View\Components\Notice', $this->signatureExtractor->extractComponentClass($bladeContent));
+    }
+
+    public function testComponentTagAloneMakesAnImplicitSignatureThatIsStripped(): void
+    {
+        $bladeContent = <<<'BLADE'
+            @php
+            /** @bladestan-component \App\View\Components\Notice */
+            @endphp
+            <h1>Hello</h1>
+            BLADE;
+
+        $this->assertSame('App\View\Components\Notice', $this->signatureExtractor->extractComponentClass($bladeContent));
+        $this->assertSame("\n\n\n<h1>Hello</h1>", $this->signatureExtractor->stripImplicitSignatureBlock($bladeContent, preserveLineCount: true));
+    }
+
+    public function testNoComponentClassOutsideTheSignature(): void
+    {
+        $this->assertNull($this->signatureExtractor->extractComponentClass('<h1>Hello</h1>'));
+        $this->assertNull($this->signatureExtractor->extractComponentClass(
+            "{{-- @php\n/** @bladestan-component \\App\\X */\n@endphp --}}\n<h1>Hello</h1>",
+        ));
+    }
+
     public function testExtractEmptySignatureWhenDocblockHasNoVarTags(): void
     {
         $bladeContent = <<<'BLADE'
