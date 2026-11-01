@@ -173,6 +173,21 @@ final class CompileStandaloneTest extends PHPStanTestCase
         $this->assertStringContainsString('/** @var \Illuminate\View\ComponentAttributeBag $attributes */', $compiled);
     }
 
+    public function testPropsAndAwareVariableVariableLoopsAreRemoved(): void
+    {
+        $compiled = $this->compileView('components.variable-variable-scope');
+
+        // A write through a runtime name makes PHPStan widen every variable in
+        // scope to mixed, so Blade's own @props/@aware loops are dropped and
+        // the declared types survive into the body.
+        $this->assertStringNotContainsString('${$__key}', $compiled);
+        $this->assertStringNotContainsString('${$__consumeVariable}', $compiled);
+        $this->assertStringContainsString('echo e($title);', $compiled);
+
+        // A variable variable the author wrote is still analysed.
+        $this->assertStringContainsString('${$name} = $field;', $compiled);
+    }
+
     public function testClassComponentBodyGetsReflectedMembers(): void
     {
         $compiled = $this->compileView('components.panel');

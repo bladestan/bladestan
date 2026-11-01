@@ -9,6 +9,7 @@ use Bladestan\Exception\ShouldNotHappenException;
 use Bladestan\PhpParser\ArrayStringToArrayConverter;
 use Bladestan\PhpParser\NodeVisitor\AddLoopVarTypeToForeachNodeVisitor;
 use Bladestan\PhpParser\NodeVisitor\DeleteInlineHTML;
+use Bladestan\PhpParser\NodeVisitor\RemoveBladeVariableVariableLoops;
 use Bladestan\PhpParser\NodeVisitor\RemoveLivewireCompilerArtifacts;
 use Bladestan\PhpParser\NodeVisitor\TransformEach;
 use Bladestan\PhpParser\NodeVisitor\TransformIncludes;
@@ -236,6 +237,7 @@ final class BladeToPHPCompiler
             $compiledBlade = $this->bladeCompiler->compileString($fileContents);
             $stmts = $this->traverseStmtsWithVisitors($compiledBlade, [
                 new RemoveLivewireCompilerArtifacts(),
+                new RemoveBladeVariableVariableLoops(),
                 new DeleteInlineHTML(),
                 new AddLoopVarTypeToForeachNodeVisitor(),
                 new TransformEach(),
