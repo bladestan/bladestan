@@ -2,8 +2,16 @@ includes:
     - template-compiler/services.neon
 
 parameters:
+    bladestan:
+        templatePaths:
+            - %currentWorkingDirectory%/resources/views
     bootstrapFiles:
         - ../bootstrap.php
+
+parametersSchema:
+    bladestan: structure([
+        templatePaths: listOf(string())
+    ])
 
 rules:
     - Bladestan\Rules\BladeRule
@@ -50,5 +58,7 @@ services:
 
     -
         class: Bladestan\PHPStan\BladeSignatureCacheMetaExtension
+        arguments:
+            templatePaths: %bladestan.templatePaths%
         tags:
             - phpstan.resultCacheMetaExtension

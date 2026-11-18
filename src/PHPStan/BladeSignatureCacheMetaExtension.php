@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Bladestan\PHPStan;
 
-use Illuminate\Contracts\View\Factory as ViewFactory;
-use Illuminate\View\FileViewFinder;
 use PHPStan\Analyser\ResultCache\ResultCacheMetaExtension;
 use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
@@ -16,6 +14,14 @@ use UnexpectedValueException;
 
 final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
 {
+    /**
+     * @param list<string> $templatePaths
+     */
+    public function __construct(
+        private readonly array $templatePaths
+    ) {
+    }
+
     public function getKey(): string
     {
         return 'bladestan-signatures';
@@ -23,10 +29,8 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
 
     public function getHash(): string
     {
-        $paths = $this->getViewPaths();
-
         try {
-            $files = $this->discoverBladeFiles($paths);
+            $files = $this->discoverBladeFiles($this->templatePaths);
         } catch (UnexpectedValueException) {
             // return a unique hash so the cache is conservatively invalidated.
             return hash('xxh128', microtime());
@@ -43,23 +47,9 @@ final class BladeSignatureCacheMetaExtension implements ResultCacheMetaExtension
     }
 
     /**
-     * @return array<string>
-     */
-    private function getViewPaths(): array
-    {
-        $finder = resolve(ViewFactory::class)->getFinder();
-        assert($finder instanceof FileViewFinder);
-
-        /** @var array<array<string>> $hints */
-        $hints = $finder->getHints();
-
-        return array_merge($finder->getPaths(), ...array_values($hints));
-    }
-
-    /**
      * Recursively finds all *.blade.php files in the given directories.
      *
-     * @param array<string> $paths
+     * @param list<string> $paths
      * @return list<string>
      * @throws UnexpectedValueException
      */
