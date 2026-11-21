@@ -38,7 +38,8 @@ final class ViewDataParametersAnalyzer
         }
 
         if ($secondArgValue instanceof Array_) {
-            return $this->templateVariableTypesResolver->resolveArray($secondArgValue, $scope);
+            return $this->viewVariableAnalyzer->resolve($secondArgValue, $scope)
+                ?: $this->templateVariableTypesResolver->resolveArray($secondArgValue, $scope);
         }
 
         if ($secondArgValue instanceof FuncCall && $secondArgValue->name instanceof Name) {
@@ -49,6 +50,6 @@ final class ViewDataParametersAnalyzer
             }
         }
 
-        return [];
+        return $this->viewVariableAnalyzer->resolve($secondArgValue, $scope);
     }
 }
