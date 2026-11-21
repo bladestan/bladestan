@@ -173,6 +173,18 @@ final class BladeRuleTest extends RuleTestCase
             ['Binary operation "+" between string and \'bar\' results in an error.', 13],
         ]];
 
+        yield [__DIR__ . '/Fixture/data-from-expression.php', [
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 18],
+            ['Binary operation "+" between string and 10 results in an error.', 18],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 18],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 19],
+            ['Binary operation "+" between string and 10 results in an error.', 19],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 19],
+            ['Strict comparison using === between 1 and 1 will always evaluate to true.', 20],
+            ['Binary operation "+" between string and 10 results in an error.', 20],
+            ['Binary operation "+" between string and \'bar\' results in an error.', 20],
+        ]];
+
         yield [__DIR__ . '/Fixture/data-from-with.php', [
             ['Binary operation "+" between string and 10 results in an error.', 9],
             ['Variable $bar might not be defined.', 9],
