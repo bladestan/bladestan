@@ -1,0 +1,140 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Bladestan\Console\Extraction;
+
+use Bladestan\Compiler\TypeStringValidator;
+use Bladestan\NodeAnalyzer\BladeScopeVariables;
+use Bladestan\NodeAnalyzer\RenderSiteMatcher;
+use PhpParser\Node;
+use PhpParser\Node\Expr\CallLike;
+use PHPStan\Analyser\Scope;
+use PHPStan\Collectors\Collector;
+use PHPStan\Type\GeneralizePrecision;
+use PHPStan\Type\Type;
+use PHPStan\Type\VerbosityLevel;
+use ValueError;
+
+/**
+ * Harvests the variable types PHPStan infers at each render site, so signatures
+ * can reflect what controllers actually pass rather than a hand-guessed
+ * contract.
+ *
+ * This is the data-gathering half of `bladestan:generate-signatures`. It runs
+ * inside a normal PHPStan analysis (registered through
+ * config/generate-signatures.neon) and matches render sites through the same
+ * {@see \Bladestan\NodeAnalyzer\RenderSiteMatcher} as
+ * {@see \Bladestan\Rules\ViewCallSiteRule}, so every render form the validator
+ * understands (`view()`, `View::make()`, `->view()`/`->markdown()`, Mailable
+ * content) is covered by the generator too. Each collected entry is one render
+ * site: the view name plus a variable => PHPDoc-type map, with the type printed
+ * fully qualified so a written signature needs no `use` import.
+ *
+ * A site that forwards the surrounding scope (a compiled bare `@include`) also
+ * records the types of every scope variable under `forwarded`, so a partial
+ * that relies on that scope can be typed from what its includers pass.
+ *
+ * {@see ViewSignatureCollectedDataRule} aggregates every site of a view.
+ *
+ * @implements Collector<CallLike, list<array{view: string, variables: array<string, string>, forwarded: array<string, string>, line: int}>>
+ * @see \Bladestan\Tests\Console\Extraction\ViewSignatureCollectedDataRuleTest
+ */
+final class ViewDataCollector implements Collector
+{
+    public function __construct(
+        private readonly RenderSiteMatcher $renderSiteMatcher,
+        private readonly TypeStringValidator $typeStringValidator,
+    ) {
+    }
+
+    public function getNodeType(): string
+    {
+        return CallLike::class;
+    }
+
+    /**
+     * @param CallLike $node
+     * @return list<array{view: string, variables: array<string, string>, forwarded: array<string, string>, line: int}>|null
+     * @throws ValueError
+     */
+    public function processNode(Node $node, Scope $scope): ?array
+    {
+        $sites = [];
+        foreach ($this->renderSiteMatcher->match($node, $scope) as $renderTemplateWithParameter) {
+            $variables = [];
+            foreach ($renderTemplateWithParameter->parametersArray as $variableName => $type) {
+                // ClassPropertiesResolver folds a class-backed call site's own public
+                // properties and Blade/Livewire internals ($slot, $attributes, $this, ...)
+                // into parametersArray, so ViewCallSiteRule doesn't false-positive when a
+                // component's render() calls view() without re-passing them. But those
+                // are supplied automatically by ComponentScopeResolver at compile time for
+                // every component template, so writing them into a generated signature
+                // would only duplicate what the template already gets for free.
+                if (BladeScopeVariables::isInternal($variableName)) {
+                    continue;
+                }
+
+                $variables[$variableName] = $this->describeType($type);
+            }
+
+            $sites[] = [
+                'view' => $renderTemplateWithParameter->templateName,
+                'variables' => $variables,
+                'forwarded' => $renderTemplateWithParameter->forwardsScope ? $this->forwardedScope($scope) : [],
+                'line' => $node->getStartLine(),
+            ];
+        }
+
+        return $sites === [] ? null : $sites;
+    }
+
+    /**
+     * The types of every scope variable a bare `@include` forwards to its
+     * partial, minus the internals Blade injects. This is the type source for a
+     * partial that declares no data of its own; which of these variables the
+     * partial actually needs is decided from {@see TemplateFreeVariableCollector}.
+     *
+     * @return array<string, string>
+     */
+    private function forwardedScope(Scope $scope): array
+    {
+        $forwarded = [];
+        foreach ($scope->getDefinedVariables() as $variableName) {
+            if (BladeScopeVariables::isInternal($variableName)) {
+                continue;
+            }
+
+            $forwarded[$variableName] = $this->describeType($scope->getVariableType($variableName));
+        }
+
+        return $forwarded;
+    }
+
+    /**
+     * Print a type as parser-safe PHPDoc suited to a reusable signature.
+     *
+     * The type is first generalized, so a value passed as the literal
+     * `'Hello World'` becomes `string` rather than a signature that only that
+     * one string satisfies, while array shapes and generics are kept. The
+     * precise description is used when PHPStan's own PHPDoc parser accepts it;
+     * when it prints something the parser rejects (an accessory type such as
+     * `hasOffsetValue(...)`, an unresolved template placeholder) it falls back
+     * to the coarser type-only description and, failing that, to `mixed`. Every
+     * branch is a description PHPStan produced, so no string rewriting is
+     * needed.
+     */
+    private function describeType(Type $type): string
+    {
+        $type = $type->generalize(GeneralizePrecision::lessSpecific());
+
+        foreach ([VerbosityLevel::precise(), VerbosityLevel::typeOnly()] as $verbosityLevel) {
+            $described = $type->describe($verbosityLevel);
+            if ($this->typeStringValidator->isValid($described)) {
+                return $described;
+            }
+        }
+
+        return 'mixed';
+    }
+}

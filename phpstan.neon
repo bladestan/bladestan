@@ -29,3 +29,11 @@ parameters:
         -
             identifier: missingType.checkedException
             path: tests/*
+        # RuleTestCase does not expose the dependencies a rule declares to the
+        # result cache, so this test reads them back from a real analysis, which
+        # goes through classes outside PHPStan's backward compatibility promise.
+        -
+            identifiers:
+                - phpstanApi.classConstant
+                - phpstanApi.method
+            path: tests/PHPStan/DependencyTrackingTest.php

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\ValueObject\Types;
 use Illuminate\Contracts\Support\Renderable;
 use PHPStan\Type\ArrayType;
 use PHPStan\Type\Constant\ConstantArrayTypeBuilder;
@@ -61,36 +60,5 @@ class ValueResolver
         }
 
         return new MixedType();
-    }
-
-    public function toNative(mixed $value): string
-    {
-        $typeClass = Types::class;
-        if (is_bool($value)) {
-            return "{$typeClass}::getBool()";
-        }
-
-        if (is_int($value)) {
-            return "{$typeClass}::getInt()";
-        }
-
-        if (is_float($value)) {
-            return "{$typeClass}::getFloat()";
-        }
-
-        if (is_string($value) || $value instanceof Renderable) {
-            return "{$typeClass}::getString()";
-        }
-
-        if (is_object($value)) {
-            $className = get_class($value);
-            return "resolve({$className}::class)";
-        }
-
-        if (is_array($value)) {
-            return "{$typeClass}::getArray()";
-        }
-
-        return "{$typeClass}::getMixed()";
     }
 }

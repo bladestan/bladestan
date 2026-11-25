@@ -34,8 +34,6 @@ final class TransformIncludes extends NodeVisitorAbstract
         }
 
         assert($expr->args[0] instanceof Arg);
-        assert($expr->args[1] instanceof Arg);
-        assert($expr->args[2] instanceof Arg);
 
         $condition = $expr->args[0]->value;
 
@@ -43,12 +41,20 @@ final class TransformIncludes extends NodeVisitorAbstract
             $condition = new BooleanNot($condition);
         }
 
+        // Everything after the condition is the make() call Blade would emit for
+        // the equivalent @include: the view name, any explicit data, and the
+        // `array_diff_key(get_defined_vars(), ...)` scope-forwarding argument.
+        // Forward all of them so TransformIncludesToViewCalls still sees the
+        // forwarding arg; dropping it would make the partial's scope variables
+        // look unprovided and false-positive as missing parameters.
+        $makeArgs = array_slice($expr->args, 1);
+
         return new If_(
             $condition,
             [
                 'stmts' => [new Echo_([
                     new MethodCall(
-                        new MethodCall(new Variable('__env'), 'make', [$expr->args[1], $expr->args[2]]),
+                        new MethodCall(new Variable('__env'), 'make', $makeArgs),
                         'render'
                     ),
                 ])],

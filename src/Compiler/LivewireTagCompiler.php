@@ -32,15 +32,41 @@ class LivewireTagCompiler
     private const LIVEWIRE_ARGS_REGEX = '/\$__split\(\'([^\']*?)\', (.+?)\);$/sm';
 
     /**
+     * Livewire classes named by the tags replaced in the last replace() call,
+     * as a set keyed by class name. Their mount() signature is reflected into
+     * the output below, so whoever caches that output has to recompile when the
+     * signature changes. A class that does not exist is recorded too: creating
+     * it changes the output just as much as editing it.
+     *
+     * @var array<string, true>
+     */
+    private array $referencedClasses = [];
+
+    private readonly LivewireComponentClassResolver $livewireComponentClassResolver;
+
+    /**
      * Create a new component tag compiler.
      */
     public function __construct(
         protected ArrayStringToArrayConverter $arrayStringToArrayConverter
     ) {
+        $this->livewireComponentClassResolver = new LivewireComponentClassResolver();
+    }
+
+    /**
+     * The Livewire classes whose signature shaped the last replace() call.
+     *
+     * @return list<string>
+     */
+    public function getReferencedClasses(): array
+    {
+        return array_keys($this->referencedClasses);
     }
 
     public function replace(string $rawPhpContent): string
     {
+        $this->referencedClasses = [];
+
         return preg_replace_callback(self::LIVEWIRE_REGEX, function (array $match): string {
             $block = $match[1];
             if (! preg_match(self::LIVEWIRE_ARGS_REGEX, $block, $match)) {
@@ -53,6 +79,7 @@ class LivewireTagCompiler
 
             $attributes = $this->arrayStringToArrayConverter->convert($match[2]);
             $attributes = collect($attributes)
+                ->reject(fn (string $value, string $key): bool => $this->isReservedParam($key))
                 ->mapWithKeys(fn (string $value, string $key): array => [
                     Str::camel($key) => $value,
                 ])
@@ -68,6 +95,7 @@ class LivewireTagCompiler
     private function componentString(string $component, array $attributes): string
     {
         $class = $this->getComponentClass($component);
+        $this->referencedClasses[ltrim($class, '\\')] = true;
 
         $mount = '';
         if (class_exists($class) && method_exists($class, 'mount')) {
@@ -121,8 +149,27 @@ class LivewireTagCompiler
         return "\$component = new {$class}();{$mount}{$properties}";
     }
 
+    /**
+     * Livewire's reserved tag parameters (lazy, defer, wire:ref, @event listeners) configure the
+     * tag itself and never reach the component as a property or mount() argument. Mirrors
+     * HandleComponents::isReservedParam(), matched on the key as written in the tag.
+     */
+    private function isReservedParam(string $key): bool
+    {
+        return in_array($key, ['lazy', 'defer', 'lazy.bundle', 'defer.bundle', 'wire:ref'], true)
+            || str_starts_with($key, '@');
+    }
+
     private function getComponentClass(string $view): string
     {
+        $resolvedClass = $this->livewireComponentClassResolver->resolve($view);
+        if ($resolvedClass !== null) {
+            return $resolvedClass;
+        }
+
+        // Livewire knows no class for this component, which is what a genuinely
+        // missing component looks like. Fall back to the discovery convention so
+        // the class.notFound that follows names what the author meant.
         try {
             $namespace = Config::string('livewire.class_namespace');
         } catch (InvalidArgumentException) {

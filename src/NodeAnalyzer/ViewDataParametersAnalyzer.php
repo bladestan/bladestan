@@ -4,15 +4,12 @@ declare(strict_types=1);
 
 namespace Bladestan\NodeAnalyzer;
 
-use Bladestan\TemplateCompiler\TypeAnalyzer\TemplateVariableTypesResolver;
+use Bladestan\ValueObject\ResolvedParameters;
 use PhpParser\Node\Arg;
 use PhpParser\Node\Expr\Array_;
 use PhpParser\Node\Expr\FuncCall;
-use PhpParser\Node\Expr\New_;
-use PhpParser\Node\Expr\Variable;
 use PhpParser\Node\Name;
 use PHPStan\Analyser\Scope;
-use PHPStan\Type\Type;
 use ValueError;
 
 final class ViewDataParametersAnalyzer
@@ -25,17 +22,17 @@ final class ViewDataParametersAnalyzer
     }
 
     /**
-     * @return array<string, Type>
+     * Resolve a render site's data argument to the variables it passes. The
+     * result is unresolved when the argument's array shape can't be fully
+     * determined (e.g. `array_merge()`, a typed parameter, a ternary): see
+     * {@see ResolvedParameters} for why callers must then skip the
+     * missing-parameter check rather than treat it as "no data was passed".
      *
      * @throws ValueError
      */
-    public function resolveParametersArray(Arg $arg, Scope $scope): array
+    public function resolveParametersArray(Arg $arg, Scope $scope): ResolvedParameters
     {
         $secondArgValue = $arg->value;
-
-        if ($secondArgValue instanceof Variable || $secondArgValue instanceof New_) {
-            return $this->viewVariableAnalyzer->resolve($secondArgValue, $scope);
-        }
 
         if ($secondArgValue instanceof Array_) {
             return $this->templateVariableTypesResolver->resolveArray($secondArgValue, $scope);
@@ -49,6 +46,9 @@ final class ViewDataParametersAnalyzer
             }
         }
 
-        return [];
+        // Anything else (a typed variable, `array_merge()`, a ternary, a
+        // method call, ...) is resolved generally through the expression's
+        // PHPStan type rather than assumed empty.
+        return $this->viewVariableAnalyzer->resolve($secondArgValue, $scope);
     }
 }
