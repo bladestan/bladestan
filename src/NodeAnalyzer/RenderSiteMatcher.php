@@ -29,6 +29,7 @@ final class RenderSiteMatcher
         private readonly LaravelViewFunctionMatcher $laravelViewFunctionMatcher,
         private readonly BladeViewMethodsMatcher $bladeViewMethodsMatcher,
         private readonly MailablesContentMatcher $mailablesContentMatcher,
+        private readonly ConfiguredRenderSiteMatcher $configuredRenderSiteMatcher,
     ) {
     }
 
@@ -43,7 +44,10 @@ final class RenderSiteMatcher
             $node instanceof StaticCall,
             $node instanceof FuncCall => $this->laravelViewFunctionMatcher->match($node, $scope),
             $node instanceof MethodCall => $this->bladeViewMethodsMatcher->match($node, $scope),
-            $node instanceof New_ => $this->mailablesContentMatcher->match($node, $scope),
+            $node instanceof New_ => [
+                ...$this->mailablesContentMatcher->match($node, $scope),
+                ...$this->configuredRenderSiteMatcher->match($node, $scope),
+            ],
             default => [],
         };
     }
